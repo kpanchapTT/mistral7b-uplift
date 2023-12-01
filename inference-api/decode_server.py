@@ -10,7 +10,7 @@ import os
 sys.path.append(os.getcwd())
 
 from decode_backend_v0 import run_decode_backend
-
+from inference_config import inference_config
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
@@ -35,7 +35,7 @@ context = Context()
 override_args = ['--mode', 'concurrent', '-l', '1', '--version', 'efficient-40b', '-d',
                  'pytorch', '--arch', 'nebula-galaxy', '--num-tokens', '1_000_000_000', '--user-rows',
                  '32', '--precision', 'fp32', '--num-chips', '32', '-mf', '8',
-                 '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', '/proj_sw/user_dev/hf_data',
+                 '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', inference_config.hf_cache,
                  '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9',
                  ]
 
@@ -44,7 +44,7 @@ override_args = ['--mode', 'concurrent', '-l', '1', '--version', 'efficient-40b'
 # override_args = ['--mode', 'concurrent', '-l', '1', '--version', 'efficient-40b', '-d',
 #                  'pytorch', '--arch', 'nebula-galaxy', '--num-tokens', '1_000_000_000', '--user-rows',
 #                  '32', '--precision', 'fp32', '--num-chips', '32', '-mf', '8',
-#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', '/proj_sw/user_dev/hf_data',
+#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', HF_CACHE,
 #                  '-odlmh', '-plmh', '-fv', '--flash-decode', #'--top-k', '5', '--top-p', '0.9',
 #                  ]
 
@@ -52,7 +52,7 @@ override_args = ['--mode', 'concurrent', '-l', '1', '--version', 'efficient-40b'
 # override_args = ['--mode', 'concurrent', '-l', '1', '--version', 'efficient-40b', '-d',
 #                  'pytorch', '--arch', 'nebula-galaxy', '--num-tokens', '1_000_000_000', '--user-rows',
 #                  '32', '--precision', 'fp32', '--num-chips', '32', '-mf', '8',
-#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', '/proj_sw/user_dev/hf_data',
+#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', HF_CACHE,
 #                  '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9', '--load-pretrained',
 #                  '--model', 'tiiuae/falcon-40b-instruct'
 #                  ]
@@ -61,7 +61,7 @@ override_args = ['--mode', 'concurrent', '-l', '1', '--version', 'efficient-40b'
 # override_args = ['--mode', 'concurrent', '-l', '2', '--version', 'efficient-40b', '-d',
 #                  'silicon', '--arch', 'nebula-galaxy', '--num-tokens', '1_000_000_000', '--num-outer-loops', '100_000',
 #                  '--user-rows', '32', '--precision', 'bf16', '--num-chips', '32', '-mf', '8',
-#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', '/proj_sw/user_dev/hf_data',
+#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', HF_CACHE,
 #                  '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9', #'--load', 'flash_decode_2l_v0.tti',
 #                  #'--load-pretrained'
 #                  ]
