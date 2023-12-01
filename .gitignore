@@ -8,7 +8,7 @@ __pycache__
 *.whl
 
 # Virtual Environment
-python_env
+env
 
 # Output Files
 *netlist.yaml
@@ -23,6 +23,8 @@ generated_modules
 *.json
 *.pt
 .env
+*.tti
+*.txt
 
 # Site files
 site/
