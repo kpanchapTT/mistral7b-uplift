@@ -23,6 +23,18 @@ Run the decode server
 python decode_server.py
 ```
 
+
+## env setup
+
+```bash
+python3 -m venv env
+source env/bin/activate
+python3 -m pip install --upgrade pip=20.0.2 setuptools wheel
+python3 -m pip install pybuda-0.1.231113+dev.wh.b0.cdbd30a-cp38-cp38-linux_x86_64.whl
+python3 -m pip install tvm-0.9.0+dev.tt.c2076affc-cp38-cp38-linux_x86_64.whl
+python3 -m pip install -r requirements.txt
+```
+
 # [WIP] Documentation 
 The decode server calls `decode_backend_v0.py` run_decode_backend()
 
@@ -34,5 +46,4 @@ DecodeBackend.run_generate() runs in a loop
 Flask SocketIO app
 
 identify caller with flask.session.get('session_id')
-
 
