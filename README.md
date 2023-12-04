@@ -19,8 +19,9 @@ BBE: bcb342b9bfed881733d43826d7e739b61a126840
 
 
 Run the decode server
-```python
-python decode_server.py
+```bash
+source env/bin/activate
+python inference-api/decode_server.py
 ```
 
 
@@ -33,6 +34,8 @@ python3 -m pip install --upgrade pip=20.0.2 setuptools wheel
 python3 -m pip install pybuda-0.1.231113+dev.wh.b0.cdbd30a-cp38-cp38-linux_x86_64.whl
 python3 -m pip install tvm-0.9.0+dev.tt.c2076affc-cp38-cp38-linux_x86_64.whl
 python3 -m pip install -r requirements.txt
+
+export HF_CACHE="/proj_sw/large-model-cache/falcon40b"
 ```
 
 # [WIP] Documentation 
@@ -47,3 +50,8 @@ Flask SocketIO app
 
 identify caller with flask.session.get('session_id')
 
+# clean tt artifacts
+
+```bash
+rm -rf .hlkc_cache/ .pkl_memoize_py3/ generated_modules/ tt_build/
+```

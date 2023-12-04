@@ -32,19 +32,19 @@ class Context:
 context = Context()
 
 # 1L pytorch no weights
-override_args = ['--mode', 'concurrent', '-l', '1', '--version', 'efficient-40b', '-d',
-                 'pytorch', '--arch', 'nebula-galaxy', '--num-tokens', '1_000_000_000', '--user-rows',
-                 '32', '--precision', 'fp32', '--num-chips', '32', '-mf', '8',
-                 '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', inference_config.hf_cache,
-                 '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9',
-                 ]
+# override_args = ['--mode', 'concurrent', '-l', '1', '--version', 'efficient-40b', '-d',
+#                  'pytorch', '--arch', 'nebula-galaxy', '--num-tokens', '1_000_000_000', '--user-rows',
+#                  '32', '--precision', 'fp32', '--num-chips', '32', '-mf', '8',
+#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', inference_config.hf_cache,
+#                  '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9',
+#                  ]
 
 # # # 60L pytorch
 # # 1L pytorch no weights
 # override_args = ['--mode', 'concurrent', '-l', '1', '--version', 'efficient-40b', '-d',
 #                  'pytorch', '--arch', 'nebula-galaxy', '--num-tokens', '1_000_000_000', '--user-rows',
 #                  '32', '--precision', 'fp32', '--num-chips', '32', '-mf', '8',
-#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', HF_CACHE,
+#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', inference_config.hf_cache,
 #                  '-odlmh', '-plmh', '-fv', '--flash-decode', #'--top-k', '5', '--top-p', '0.9',
 #                  ]
 
@@ -52,7 +52,7 @@ override_args = ['--mode', 'concurrent', '-l', '1', '--version', 'efficient-40b'
 # override_args = ['--mode', 'concurrent', '-l', '1', '--version', 'efficient-40b', '-d',
 #                  'pytorch', '--arch', 'nebula-galaxy', '--num-tokens', '1_000_000_000', '--user-rows',
 #                  '32', '--precision', 'fp32', '--num-chips', '32', '-mf', '8',
-#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', HF_CACHE,
+#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', inference_config.hf_cache,
 #                  '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9', '--load-pretrained',
 #                  '--model', 'tiiuae/falcon-40b-instruct'
 #                  ]
@@ -61,28 +61,28 @@ override_args = ['--mode', 'concurrent', '-l', '1', '--version', 'efficient-40b'
 # override_args = ['--mode', 'concurrent', '-l', '2', '--version', 'efficient-40b', '-d',
 #                  'silicon', '--arch', 'nebula-galaxy', '--num-tokens', '1_000_000_000', '--num-outer-loops', '100_000',
 #                  '--user-rows', '32', '--precision', 'bf16', '--num-chips', '32', '-mf', '8',
-#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', HF_CACHE,
-#                  '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9', #'--load', 'flash_decode_2l_v0.tti',
-#                  #'--load-pretrained'
+#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', inference_config.hf_cache,
+#                  '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9', '--load', 'flash_decode_2l_v0_test.tti',
+#                  '--load-pretrained', '--model', 'tiiuae/falcon-40b-instruct',
 #                  ]
 
 # # 60L silicon
 # override_args = ['--mode', 'concurrent', '-l', '60', '--version', 'efficient-40b', '-d',
 #                  'silicon', '--arch', 'nebula-galaxy', '--num-tokens', '1000000', '--num-outer-loops', '1000',
 #                  '--user-rows', '32', '--precision', 'bf16', '--num-chips', '32', '-mf', '8',
-#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', '/localdev/xuncai',
-#                  '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9', '--load', 'flash_decode_60l_v0_instruct.tti',
-#                  '--load-pretrained', --model tiiuae/falcon-40b-instruct,
-#                  ]
-
-# # 60L silicon instruct
-# override_args = ['--mode', 'concurrent', '-l', '60', '--version', 'efficient-40b', '-d',
-#                  'silicon', '--arch', 'nebula-galaxy', '--num-tokens', '1000000', '--num-outer-loops', '1000',
-#                  '--user-rows', '32', '--precision', 'bf16', '--num-chips', '32', '-mf', '8',
-#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', '/localdev/xuncai',
+#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', inference_config.hf_cache,
 #                  '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9', '--load', 'flash_decode_60l_v0_instruct.tti',
 #                  '--load-pretrained', '--model', 'tiiuae/falcon-40b-instruct',
 #                  ]
+
+# # 60L silicon instruct
+override_args = ['--mode', 'concurrent', '-l', '60', '--version', 'efficient-40b', '-d',
+                 'silicon', '--arch', 'nebula-galaxy', '--num-tokens', '1000000', '--num-outer-loops', '1000',
+                 '--user-rows', '32', '--precision', 'bf16', '--num-chips', '32', '-mf', '8',
+                 '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', inference_config.hf_cache,
+                 '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9', '--load', 'flash_decode_60l_v0_instruct.tti',
+                 '--load-pretrained', '--model', 'tiiuae/falcon-40b-instruct',
+                 ]
 
 verbose = False
 

@@ -25,6 +25,7 @@ generated_modules
 .env
 *.tti
 *.txt
+unzipped_tti/
 
 # Site files
 site/
