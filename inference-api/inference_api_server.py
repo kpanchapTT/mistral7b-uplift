@@ -6,6 +6,7 @@ import threading
 import time
 import uuid
 from threading import Lock
+import random
 
 from flask import Flask, Response, jsonify, request, session
 
@@ -37,12 +38,42 @@ class Context:
 context = Context()
 
 # 1L pytorch no weights
-# override_args = ['--mode', 'concurrent', '-l', '1', '--version', 'efficient-40b', '-d',
-#                  'pytorch', '--arch', 'nebula-galaxy', '--num-tokens', '1_000_000_000', '--user-rows',
-#                  '32', '--precision', 'fp32', '--num-chips', '32', '-mf', '8',
-#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', inference_config.hf_cache,
-#                  '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9',
-#                  ]
+override_args = [
+    "--mode",
+    "concurrent",
+    "-l",
+    "1",
+    "--version",
+    "efficient-40b",
+    "-d",
+    "pytorch",
+    "--arch",
+    "nebula-galaxy",
+    "--num-tokens",
+    "1_000_000_000",
+    "--user-rows",
+    "32",
+    "--precision",
+    "fp32",
+    "--num-chips",
+    "32",
+    "-mf",
+    "8",
+    "--log-level",
+    "ERROR",
+    "--opt-level",
+    "4",
+    "--hf-cache",
+    inference_config.hf_cache,
+    "-odlmh",
+    "-plmh",
+    "-fv",
+    "--flash-decode",
+    "--top-k",
+    "5",
+    "--top-p",
+    "0.9",
+]
 
 # # # 60L pytorch
 # # 1L pytorch no weights
@@ -63,49 +94,49 @@ context = Context()
 #                  ]
 
 # # 2L silicon
-override_args = [
-    "--mode",
-    "concurrent",
-    "-l",
-    "2",
-    "--version",
-    "efficient-40b",
-    "-d",
-    "silicon",
-    "--arch",
-    "nebula-galaxy",
-    "--num-tokens",
-    "1_000_000_000",
-    "--num-outer-loops",
-    "100_000",
-    "--user-rows",
-    "32",
-    "--precision",
-    "bf16",
-    "--num-chips",
-    "32",
-    "-mf",
-    "8",
-    "--log-level",
-    "ERROR",
-    "--opt-level",
-    "4",
-    "--hf-cache",
-    inference_config.hf_cache,
-    "-odlmh",
-    "-plmh",
-    "-fv",
-    "--flash-decode",
-    "--top-k",
-    "5",
-    "--top-p",
-    "0.9",
-    "--load",
-    "flash_decode_2l_v0_test.tti",
-    "--load-pretrained",
-    "--model",
-    "tiiuae/falcon-40b-instruct",
-]
+# override_args = [
+#     "--mode",
+#     "concurrent",
+#     "-l",
+#     "2",
+#     "--version",
+#     "efficient-40b",
+#     "-d",
+#     "silicon",
+#     "--arch",
+#     "nebula-galaxy",
+#     "--num-tokens",
+#     "1_000_000_000",
+#     "--num-outer-loops",
+#     "100_000",
+#     "--user-rows",
+#     "32",
+#     "--precision",
+#     "bf16",
+#     "--num-chips",
+#     "32",
+#     "-mf",
+#     "8",
+#     "--log-level",
+#     "ERROR",
+#     "--opt-level",
+#     "4",
+#     "--hf-cache",
+#     inference_config.hf_cache,
+#     "-odlmh",
+#     "-plmh",
+#     "-fv",
+#     "--flash-decode",
+#     "--top-k",
+#     "5",
+#     "--top-p",
+#     "0.9",
+#     "--load",
+#     "flash_decode_2l_v0_test.tti",
+#     "--load-pretrained",
+#     "--model",
+#     "tiiuae/falcon-40b-instruct",
+# ]
 
 # # 60L silicon
 # override_args = ['--mode', 'concurrent', '-l', '60', '--version', 'efficient-40b', '-d',
@@ -216,7 +247,7 @@ def validate_request(request):
 def get_user_parameters(data):
     default_temperature = 1.0
     default_top_p = 0.9
-    default_top_k = 20
+    default_top_k = 10
     default_max_tokens = 128
     default_stop_sequence = None  # EOS
     params = {
@@ -279,10 +310,10 @@ def inference():
 
     # if input_q full, retry with back-off
     for sleep_secs in range(0, inference_config.input_timeout, 1):
-        print(f"input_queue.qsize(): {input_queue.qsize()}")
         if input_queue.qsize() >= inference_config.max_input_qsize:
-            time.sleep(sleep_secs)
-            print(f"back off: {session['session_id']} ")
+            print(f"back off: {sleep_secs}, session: {session['session_id']} ")
+            # add jitter
+            time.sleep(sleep_secs + random.random())
         else:
             break
     else:

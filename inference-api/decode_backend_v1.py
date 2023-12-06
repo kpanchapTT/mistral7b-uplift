@@ -7,8 +7,12 @@ from time import sleep, time
 
 import torch
 import torch.nn.functional as F
-from decode_v0 import load_model_and_tokenizer, top_pk_logits_efficient
-from pybudify40 import PyBudify
+from transformers.generation.utils import top_k_top_p_filtering
+
+from tt_models.falcon40b.decode_v0 import (
+    load_model_and_tokenizer,
+)
+from tt_models.falcon40b.pybudify40 import PyBudify
 
 
 class DecodeBackend:
@@ -351,9 +355,32 @@ class DecodeBackend:
         if not self.top_p:  # greedy
             output_tokens = output.argmax(dim=-1)
         else:
-            output_tokens = top_pk_logits_efficient(
-                output.to(torch.float32), self.top_p, self.top_k, self.temperature
+            top_ps = [
+                user.generation_params["top_p"] if user is not None else self.top_p
+                for user in self.users
+            ]
+            top_ks = [
+                user.generation_params["top_k"] if user is not None else self.top_k
+                for user in self.users
+            ]
+            temperatures = [
+                user.generation_params["temperature"]
+                if user is not None
+                else self.temperature
+                for user in self.users
+            ]
+            output_tokens = batch_top_pk_logits_efficient(
+                output.to(torch.float32), top_ps, top_ks, temperatures
             )
+
+        # if user has hit max_length, send eos token
+        for idx, user in enumerate(self.users):
+            if (
+                user is not None
+                and (user.position_id - user.prompt_length + 1)
+                >= user.generation_params["max_tokens"]
+            ):
+                output_tokens[idx] = self.tokenizer.eos_token_id
 
         # update the new tokens generated to the input id
         self.input_ids = output_tokens.view(1, self.max_users)
@@ -475,6 +502,26 @@ class DecodeBackend:
             self.update_users()
             self.send_status(prompt_q, status_q)
             self.num_steps += 1
+
+
+def batch_top_pk_logits_efficient(
+    logits, top_ps=[0.9], top_ks=[10], temperatures=[1.0], return_probs=False
+):
+    out_tokens = []
+    for b_logits, p, k, temperature in zip(logits, top_ps, top_ks, temperatures):
+        # do not keep the entire vocab size after top k. Instead, keep the k size tensor and record the associated indices
+        top_k_values, top_k_indices = torch.topk(b_logits.unsqueeze(0), k=k)
+        top_p_values = top_k_top_p_filtering(top_k_values, top_p=p)
+        probs = F.softmax(top_p_values / temperature, dim=-1)
+        top_k_id = torch.multinomial(probs, num_samples=1).squeeze(-1)
+        token = top_k_indices.gather(-1, top_k_id.unsqueeze(-1)).squeeze(-1)
+        if return_probs:
+            # TODO: effectively batch probs
+            raise NotImplementedError
+            # return token, (probs, top_k_indices)
+        else:
+            out_tokens.append(token)
+    return torch.concat(out_tokens)
 
 
 def run_decode_backend(prompt_q, output_q, status_q, arg_overrides, verbose=False):
