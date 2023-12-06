@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 
 from decode_backend_v1 import DecodeBackend
 from inference_api_server import app, initialize_decode_backend
+from inference_config import inference_config
 
 """
 This script runs the flask server and initialize_decode_backend()
@@ -52,7 +53,7 @@ def test_server():
     if not os.path.exists("server_logs"):
         os.makedirs("server_logs")
     initialize_decode_backend()
-    app.run(debug=True, port=1223, host="0.0.0.0", use_reloader=False)
+    app.run(debug=True, port=inference_config.backend_server_port, host="0.0.0.0", use_reloader=False)
 
 
 if __name__ == "__main__":
