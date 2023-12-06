@@ -1,35 +1,38 @@
-from flask import Flask, request, jsonify, session, Response
 import multiprocessing
+import os
 import queue
+import sys
 import threading
+import time
 import uuid
 from threading import Lock
 
-import time
-import sys
-import os
+from flask import Flask, Response, jsonify, request, session
+
 sys.path.append(os.getcwd())
 
 from decode_backend_v1 import run_decode_backend
 from inference_config import inference_config
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'
-INIT_ID = 'COMPILE-INITIALIZATION'
+app.secret_key = "your_secret_key"
+INIT_ID = "COMPILE-INITIALIZATION"
 
 # Store current context
 # Store conversation history
 # Initialize the lock
 
+
 class Context:
     def __init__(self):
         self.conversations = {}
-        self.user_status={} # {user_id:q_position}
-        self.num_decoding_users=0
+        self.user_status = {}  # {user_id:q_position}
+        self.num_decoding_users = 0
         self.user_last_read = {}
-        self.user_parameters={}
+        self.user_parameters = {}
         # Initialize the lock
         self.conversations_lock = Lock()
+
 
 context = Context()
 
@@ -60,13 +63,49 @@ context = Context()
 #                  ]
 
 # # 2L silicon
-override_args = ['--mode', 'concurrent', '-l', '2', '--version', 'efficient-40b', '-d',
-                 'silicon', '--arch', 'nebula-galaxy', '--num-tokens', '1_000_000_000', '--num-outer-loops', '100_000',
-                 '--user-rows', '32', '--precision', 'bf16', '--num-chips', '32', '-mf', '8',
-                 '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', inference_config.hf_cache,
-                 '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9', '--load', 'flash_decode_2l_v0_test.tti',
-                 '--load-pretrained', '--model', 'tiiuae/falcon-40b-instruct',
-                 ]
+override_args = [
+    "--mode",
+    "concurrent",
+    "-l",
+    "2",
+    "--version",
+    "efficient-40b",
+    "-d",
+    "silicon",
+    "--arch",
+    "nebula-galaxy",
+    "--num-tokens",
+    "1_000_000_000",
+    "--num-outer-loops",
+    "100_000",
+    "--user-rows",
+    "32",
+    "--precision",
+    "bf16",
+    "--num-chips",
+    "32",
+    "-mf",
+    "8",
+    "--log-level",
+    "ERROR",
+    "--opt-level",
+    "4",
+    "--hf-cache",
+    inference_config.hf_cache,
+    "-odlmh",
+    "-plmh",
+    "-fv",
+    "--flash-decode",
+    "--top-k",
+    "5",
+    "--top-p",
+    "0.9",
+    "--load",
+    "flash_decode_2l_v0_test.tti",
+    "--load-pretrained",
+    "--model",
+    "tiiuae/falcon-40b-instruct",
+]
 
 # # 60L silicon
 # override_args = ['--mode', 'concurrent', '-l', '60', '--version', 'efficient-40b', '-d',
@@ -89,6 +128,7 @@ override_args = ['--mode', 'concurrent', '-l', '2', '--version', 'efficient-40b'
 verbose = False
 MAX_USER_ROWS = 32
 
+
 def initialize_decode_backend():
     global input_queue
     global output_queue
@@ -99,9 +139,14 @@ def initialize_decode_backend():
     output_queue = multiprocessing.Queue()
     status_queue = multiprocessing.Queue()
     # run the decode backend in a separate process
-    p = multiprocessing.Process(target=run_decode_backend, args=(input_queue, output_queue, status_queue, override_args, verbose))
+    p = multiprocessing.Process(
+        target=run_decode_backend,
+        args=(input_queue, output_queue, status_queue, override_args, verbose),
+    )
     p.start()
-    input_queue.put((INIT_ID, 'Dummy input for initialization', get_user_parameters({})))
+    input_queue.put(
+        (INIT_ID, "Dummy input for initialization", get_user_parameters({}))
+    )
     respond_to_users_thread = threading.Thread(target=respond_to_users)
     respond_to_users_thread.start()
     poll_status_thread = threading.Thread(target=poll_status)
@@ -116,9 +161,10 @@ def _reclaim_output_queues():
     Only this function deletes from the output_queue_map in a single thread.
     """
     current_time = time.time()
-    
+
     active_user_ids = {
-        user_id for user_id, last_read_time in context.user_last_read.items() 
+        user_id
+        for user_id, last_read_time in context.user_last_read.items()
         if current_time - last_read_time < inference_config.max_inactive_seconds
     }
     marked_for_deletion = set()
@@ -128,6 +174,7 @@ def _reclaim_output_queues():
 
     for user_id in marked_for_deletion:
         del output_queue_map[user_id]
+
 
 def respond_to_users():
     loop = 0
@@ -139,17 +186,17 @@ def respond_to_users():
             output_queue_map[response_session_id] = queue.Queue()
         output_queue_map[response_session_id].put(response)
         # Log response
-        with open(f'server_logs/response_{response_session_id}.txt', 'a') as f:
+        with open(f"server_logs/response_{response_session_id}.txt", "a") as f:
             f.write(response)
         loop += 1
         if loop % MAX_USER_ROWS == 0:
             _reclaim_output_queues()
 
-    
+
 def poll_status():
     while True:
         prompt_q_size, num_decoding_users, decoding_users = status_queue.get()
-        print('num_decoding_users: ', num_decoding_users)
+        print("num_decoding_users: ", num_decoding_users)
         print("prompt_q_size: ", prompt_q_size)
 
 
@@ -158,12 +205,13 @@ def validate_request(request):
     if request.is_json:
         data = request.get_json()
     else:
-        error = 'Request was not JSON', 400
+        error = "Request was not JSON", 400
         return None, error
 
     if not data.get("text"):
         error = "required 'text' parameter is either empty or not given", 400
     return data, error
+
 
 def get_user_parameters(data):
     default_temperature = 1.0
@@ -185,7 +233,6 @@ def get_output(session_id):
     done_generation = False
     started_generation = False
     while not done_generation:
-        
         if session_id in output_queue_map and not started_generation:
             started_generation = True
             with context.conversations_lock:
@@ -204,20 +251,20 @@ def get_output(session_id):
         if output_queue_map[session_id].empty():
             time.sleep(0.01)
             continue
-        
+
         out_text = output_queue_map[session_id].get_nowait()
         if out_text == "<|endoftext|>":
             done_generation = True
             with context.conversations_lock:
                 del context.user_last_read[session_id]
         # Log response
-        with open(f'server_logs/user_{session_id}.txt', 'a') as f:
+        with open(f"server_logs/user_{session_id}.txt", "a") as f:
             f.write(out_text)
 
         yield out_text
 
 
-@app.route('/predictions/falcon40b', methods=['POST'])
+@app.route("/predictions/falcon40b", methods=["POST"])
 def inference():
     start_time = time.time()
     data, error = validate_request(request)
@@ -226,7 +273,7 @@ def inference():
 
     # create a session_id if not supplied
     if "session_id" not in session and "session_id" not in data:
-        session['session_id'] = str(uuid.uuid4())
+        session["session_id"] = str(uuid.uuid4())
     else:
         print(f"PREVIOUS EXISTING SESSION: {session['session_id']}")
 
@@ -242,26 +289,28 @@ def inference():
         return "Service busy", 500
 
     # input
-    session_id = session.get('session_id')
+    session_id = session.get("session_id")
     user_message = data["text"]
     user_message = _preprocess_prompt(user_message)
     params = get_user_parameters(data)
     input_queue.put((session_id, user_message, params))
 
     # Log user's prompt
-    with open(f'server_logs/prompt_{session_id}.txt', 'a') as f:
-        f.write('Prompt:\n' + user_message + '\n')
+    with open(f"server_logs/prompt_{session_id}.txt", "a") as f:
+        f.write("Prompt:\n" + user_message + "\n")
 
     # output
-    return Response(get_output(session_id), content_type='text/event-stream')
+    return Response(get_output(session_id), content_type="text/event-stream")
+
 
 def _preprocess_prompt(prompt):
     preprocessed_prompt = f"User: {prompt}\nAI:"
     return preprocessed_prompt
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     # Create server log directory
-    if not os.path.exists('server_logs'):
-        os.makedirs('server_logs')
+    if not os.path.exists("server_logs"):
+        os.makedirs("server_logs")
     initialize_decode_backend()
-    app.run(debug=True, port=1223, host='0.0.0.0')
+    app.run(debug=True, port=1223, host="0.0.0.0")
