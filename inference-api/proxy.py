@@ -12,13 +12,15 @@ import jwt
 import requests
 from jwt import InvalidTokenError
 
+from inference_config import inference_config
+
 HTTP_UNAUTHORIZED = 401
 HTTP_INTERNAL_SERVER_ERROR = 500
 
 
 class ProxyHTTPRequestHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
-    hostname = "http://127.0.0.1:1223"
+    hostname = f"http://127.0.0.1:{inference_config.reverse_proxy_port}"
     jwt_secret = None
 
     # pylint: disable=invalid-name
@@ -131,14 +133,14 @@ def parse_args():
         "--port",
         dest="port",
         type=int,
-        default=7000,
+        default=inference_config.reverse_proxy_port,
         help="serve HTTP requests on specified port.",
     )
     parser.add_argument(
         "--hostname",
         dest="hostname",
         type=str,
-        default="http://127.0.0.1:1223",
+        default=f"http://127.0.0.1:{inference_config.reverse_proxy_port}",
         help="hostname to send requests to.",
     )
     args = parser.parse_args()

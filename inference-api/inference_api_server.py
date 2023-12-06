@@ -226,6 +226,7 @@ def respond_to_users():
 
 def poll_status():
     while True:
+        time.sleep(1)
         prompt_q_size, num_decoding_users, decoding_users = status_queue.get()
         print("num_decoding_users: ", num_decoding_users)
         print("prompt_q_size: ", prompt_q_size)
@@ -345,4 +346,4 @@ if __name__ == "__main__":
     if not os.path.exists("server_logs"):
         os.makedirs("server_logs")
     initialize_decode_backend()
-    app.run(debug=True, port=1223, host="0.0.0.0")
+    app.run(debug=True, port=inference_config.backend_server_port, host="0.0.0.0")
