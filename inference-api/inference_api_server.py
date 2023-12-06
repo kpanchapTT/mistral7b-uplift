@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify, session, Response
-# from flask_socketio import SocketIO, emit, join_room, leave_room
 import multiprocessing
+import queue
 import threading
 import uuid
 from threading import Lock
@@ -10,14 +10,12 @@ import sys
 import os
 sys.path.append(os.getcwd())
 
-# from decode_backend_v0 import run_decode_backend
-from _mock_decode_backend import run_decode_backend
+from decode_backend_v1 import run_decode_backend
 from inference_config import inference_config
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
 INIT_ID = 'COMPILE-INITIALIZATION'
-# socketio = SocketIO(app)
 
 # Store current context
 # Store conversation history
@@ -28,6 +26,7 @@ class Context:
         self.conversations = {}
         self.user_status={} # {user_id:q_position}
         self.num_decoding_users=0
+        self.user_last_read = {}
         self.user_parameters={}
         # Initialize the lock
         self.conversations_lock = Lock()
@@ -88,11 +87,14 @@ override_args = ['--mode', 'concurrent', '-l', '2', '--version', 'efficient-40b'
 #                  ]
 
 verbose = False
+MAX_USER_ROWS = 32
 
 def initialize_decode_backend():
     global input_queue
     global output_queue
     global status_queue
+    global output_queue_map
+    output_queue_map = {}
     input_queue = multiprocessing.Queue()
     output_queue = multiprocessing.Queue()
     status_queue = multiprocessing.Queue()
@@ -100,10 +102,56 @@ def initialize_decode_backend():
     p = multiprocessing.Process(target=run_decode_backend, args=(input_queue, output_queue, status_queue, override_args, verbose))
     p.start()
     input_queue.put((INIT_ID, 'Dummy input for initialization', get_user_parameters({})))
-    # respond_to_users_thread = threading.Thread(target=respond_to_users)
-    # respond_to_users_thread.start()
-    # poll_status_thread = threading.Thread(target=poll_status)
-    # poll_status_thread.start()
+    respond_to_users_thread = threading.Thread(target=respond_to_users)
+    respond_to_users_thread.start()
+    poll_status_thread = threading.Thread(target=poll_status)
+    poll_status_thread.start()
+
+
+def _reclaim_output_queues():
+    """reclaim resources for output queues for user_ids that are:
+    1. not in self.users (have completed generation)
+    2. are empty (have been read out by request handling thread)
+
+    Only this function deletes from the output_queue_map in a single thread.
+    """
+    current_time = time.time()
+    
+    active_user_ids = {
+        user_id for user_id, last_read_time in context.user_last_read.items() 
+        if current_time - last_read_time < inference_config.max_inactive_seconds
+    }
+    marked_for_deletion = set()
+    for user_id, output_q in output_queue_map.items():
+        if user_id not in active_user_ids and output_q.empty():
+            marked_for_deletion.add(user_id)
+
+    for user_id in marked_for_deletion:
+        del output_queue_map[user_id]
+
+def respond_to_users():
+    loop = 0
+    while True:
+        response_session_id, response = output_queue.get()
+        if response_session_id == INIT_ID:
+            continue
+        if response_session_id not in output_queue_map:
+            output_queue_map[response_session_id] = queue.Queue()
+        output_queue_map[response_session_id].put(response)
+        # Log response
+        with open(f'server_logs/response_{response_session_id}.txt', 'a') as f:
+            f.write(response)
+        loop += 1
+        if loop % MAX_USER_ROWS == 0:
+            _reclaim_output_queues()
+
+    
+def poll_status():
+    while True:
+        prompt_q_size, num_decoding_users, decoding_users = status_queue.get()
+        print('num_decoding_users: ', num_decoding_users)
+        print("prompt_q_size: ", prompt_q_size)
+
 
 def validate_request(request):
     error = None
@@ -135,53 +183,73 @@ def get_user_parameters(data):
 
 def get_output(session_id):
     done_generation = False
+    started_generation = False
     while not done_generation:
-        if output_queue.empty():
-            time.sleep(0.1)
+        
+        if session_id in output_queue_map and not started_generation:
+            started_generation = True
+            with context.conversations_lock:
+                context.user_last_read[session_id] = time.time()
+        elif session_id not in output_queue_map and not started_generation:
+            # waiting for start of generation
+            time.sleep(0.01)
+            continue
+        elif session_id not in output_queue_map and started_generation:
+            # generation ended without EOS token
+            print(f"session_id: {session_id} ended without EOS.")
+            done_generation = True
+            continue
+
+        # use nowait and continue sleep loop to avoid reading from q after slot_idx reallocated
+        if output_queue_map[session_id].empty():
+            time.sleep(0.01)
             continue
         
-        response_session_id, out_text = output_queue.get_nowait()
-
+        out_text = output_queue_map[session_id].get_nowait()
+        if out_text == "<|endoftext|>":
+            done_generation = True
+            with context.conversations_lock:
+                del context.user_last_read[session_id]
         # Log response
-        with open(f'server_logs/{response_session_id}.txt', 'a') as f:
+        with open(f'server_logs/user_{session_id}.txt', 'a') as f:
             f.write(out_text)
-        if response_session_id == INIT_ID:
-            continue
 
-        if response_session_id == session_id:  # Check for specific key
-            if out_text == "<|endoftext|>":
-                done_generation = True
-            yield out_text
+        yield out_text
 
 
 @app.route('/predictions/falcon40b', methods=['POST'])
 def inference():
+    start_time = time.time()
     data, error = validate_request(request)
     if error:
         return error
 
     # create a session_id if not supplied
-    if "session_id" not in data:
-        session.clear()
+    if "session_id" not in session and "session_id" not in data:
         session['session_id'] = str(uuid.uuid4())
-        # with context.conversations_lock:
-        #     conversation = context.conversations.get(session['session_id'], '')
-    
-    # if full, wait n seconds, exponential back-off
-    #   if still full after N seconds, respond with busy signal
-    # elif has capacity
+    else:
+        print(f"PREVIOUS EXISTING SESSION: {session['session_id']}")
+
+    # if input_q full, retry with back-off
+    for sleep_secs in range(0, inference_config.input_timeout, 1):
+        print(f"input_queue.qsize(): {input_queue.qsize()}")
+        if input_queue.qsize() >= inference_config.max_input_qsize:
+            time.sleep(sleep_secs)
+            print(f"back off: {session['session_id']} ")
+        else:
+            break
+    else:
+        return "Service busy", 500
+
     # input
     session_id = session.get('session_id')
     user_message = data["text"]
     user_message = _preprocess_prompt(user_message)
     params = get_user_parameters(data)
     input_queue.put((session_id, user_message, params))
-    # with context.conversations_lock:
-    #     context.conversations[session_id] = ''
-    #     context.user_parameters = get_user_parameters(data)
 
     # Log user's prompt
-    with open(f'server_logs/{session_id}.txt', 'a') as f:
+    with open(f'server_logs/prompt_{session_id}.txt', 'a') as f:
         f.write('Prompt:\n' + user_message + '\n')
 
     # output
