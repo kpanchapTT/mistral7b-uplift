@@ -18,7 +18,7 @@ HTTP_INTERNAL_SERVER_ERROR = 500
 
 class ProxyHTTPRequestHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
-    hostname = "http://127.0.0.1:8080"
+    hostname = "http://127.0.0.1:1223"
     jwt_secret = None
 
     # pylint: disable=invalid-name
@@ -138,7 +138,7 @@ def parse_args():
         "--hostname",
         dest="hostname",
         type=str,
-        default="http://127.0.0.1:8080",
+        default="http://127.0.0.1:1223",
         help="hostname to send requests to.",
     )
     args = parser.parse_args()

@@ -26,6 +26,9 @@ generated_modules
 *.tti
 *.txt
 unzipped_tti/
+backend_logs/
+server_logs/
+resource_logs/
 
 # Site files
 site/

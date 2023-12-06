@@ -270,7 +270,7 @@ def get_output(session_id):
                 context.user_last_read[session_id] = time.time()
         elif session_id not in output_queue_map and not started_generation:
             # waiting for start of generation
-            time.sleep(0.01)
+            time.sleep(0.03)
             continue
         elif session_id not in output_queue_map and started_generation:
             # generation ended without EOS token
@@ -280,7 +280,7 @@ def get_output(session_id):
 
         # use nowait and continue sleep loop to avoid reading from q after slot_idx reallocated
         if output_queue_map[session_id].empty():
-            time.sleep(0.01)
+            time.sleep(0.03)
             continue
 
         out_text = output_queue_map[session_id].get_nowait()
@@ -308,12 +308,13 @@ def inference():
     else:
         print(f"PREVIOUS EXISTING SESSION: {session['session_id']}")
 
-    # if input_q full, retry with back-off
-    for sleep_secs in range(0, inference_config.input_timeout, 1):
+    # if input_q full, retry with simple back-off
+    for timeout in [1,1,1,1,1,5,5,5,10]:
         if input_queue.qsize() >= inference_config.max_input_qsize:
-            print(f"back off: {sleep_secs}, session: {session['session_id']} ")
             # add jitter
-            time.sleep(sleep_secs + random.random())
+            sleep_t = timeout * random.random()
+            print(f"retry: {sleep_t}, session: {session['session_id']} ")
+            time.sleep(sleep_t)
         else:
             break
     else:

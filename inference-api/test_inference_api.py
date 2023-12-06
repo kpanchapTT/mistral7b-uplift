@@ -11,10 +11,10 @@ def test_api_call(prompt_extra="", print_output=True):
     # export LLM_CHAT_API_URL="${DEPLOY_URL}/predictions/falcon40b/"
 
     # API_URL = os.environ["LLM_CHAT_API_URL"]
-    API_URL = "http://127.0.0.1:1223/predictions/falcon40b"
+    # API_URL = "http://127.0.0.1:1223/predictions/falcon40b"
+    API_URL = "http://127.0.0.1:7000/predictions/falcon40b"
 
-    # headers = {"Authorization": os.environ.get('AUTHORIZATION')}
-    headers = {}
+    headers = {"Authorization": os.environ.get('AUTHORIZATION')}
 
     # set API prompt and optional parameters
     json_data = {
@@ -27,7 +27,7 @@ def test_api_call(prompt_extra="", print_output=True):
     }
     # using requests stream=True, make sure to set a timeout
     response = requests.post(
-        API_URL, json=json_data, headers=headers, stream=True, timeout=30
+        API_URL, json=json_data, headers=headers, stream=True, timeout=35
     )
     # Handle chunked response
     if response.headers.get("transfer-encoding") == "chunked":
