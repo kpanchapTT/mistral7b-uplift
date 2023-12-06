@@ -32,3 +32,8 @@ resource_logs/
 
 # Site files
 site/
+
+# unignore
+!requirements.txt
+!requirements_dev.txt
+!inference-api/test_data/before_top_pk_output.pt
