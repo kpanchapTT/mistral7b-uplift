@@ -11,19 +11,17 @@ import torch.utils.checkpoint
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, LayerNorm, MSELoss
 from torch.nn import functional as F
-
 from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
-    CausalLMOutputWithCrossAttentions,
-    QuestionAnsweringModelOutput,
-    SequenceClassifierOutputWithPast,
-    TokenClassifierOutput,
-)
+    CausalLMOutputWithCrossAttentions, QuestionAnsweringModelOutput,
+    SequenceClassifierOutputWithPast, TokenClassifierOutput)
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import logging
+
 from .configuration_RW import RWConfig
 
 logger = logging.get_logger(__name__)
+
 
 # NOTE(Hesslow): Unfortunately we did not fuse matmul and bias during training, this means that there's one additional quantization to bfloat16 between the operations.
 # In order not to degrade the quality of our HF-port, we keep these characteristics in the final model.
@@ -45,6 +43,7 @@ def rotate_half(x):
     x2 = x[..., x.shape[-1] // 2 :]
     return torch.cat((-x2, x1), dim=-1)
 
+
 def gather_cos_sin(cos, sin, position_ids, batch_size=1):
     # TODO: lookinto gather_cos_sin for user_batch
     gather_indices = position_ids[:, None, :, None]  # [bs, 1, seq_len, 1]
@@ -53,11 +52,13 @@ def gather_cos_sin(cos, sin, position_ids, batch_size=1):
     sin = torch.gather(sin.repeat(gather_indices.shape[0], 1, 1, 1), 2, gather_indices)
     return cos, sin
 
+
 def apply_rotary_pos_emb(q, k, cos, sin):
     # cos, sin have already been gathered
     q_embed = (q * cos) + (rotate_half(q) * sin)
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
+
 
 class RotaryEmbeddingTT(torch.nn.Module):
     def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None):
@@ -67,13 +68,21 @@ class RotaryEmbeddingTT(torch.nn.Module):
 
         # Build here to make `torch.jit.trace` work.
         self.max_seq_len_cached = max_position_embeddings
-        t = torch.arange(self.max_seq_len_cached, device=self.inv_freq.device, dtype=self.inv_freq.dtype)
+        t = torch.arange(
+            self.max_seq_len_cached,
+            device=self.inv_freq.device,
+            dtype=self.inv_freq.dtype,
+        )
         freqs = torch.einsum("i,j->ij", t, self.inv_freq)
-#        freqs = torch.mul(t.view((t.shape[0], 1)), self.inv_freq.view((1, self.inv_freq.shape[0]))) # einsum free implementation
+        #        freqs = torch.mul(t.view((t.shape[0], 1)), self.inv_freq.view((1, self.inv_freq.shape[0]))) # einsum free implementation
         # Different from paper, but it uses a different permutation in order to obtain the same calculation
         emb = torch.cat((freqs, freqs), dim=-1)
-        self.register_buffer("cos_cached", emb.cos()[None, None, :, :], persistent=False)
-        self.register_buffer("sin_cached", emb.sin()[None, None, :, :], persistent=False)
+        self.register_buffer(
+            "cos_cached", emb.cos()[None, None, :, :], persistent=False
+        )
+        self.register_buffer(
+            "sin_cached", emb.sin()[None, None, :, :], persistent=False
+        )
 
     def forward(self):
         return self.cos_cached, self.sin_cached
@@ -83,7 +92,11 @@ def _make_causal_mask(
     input_ids_shape: torch.Size, device: torch.device, past_key_values_length: int
 ) -> torch.BoolTensor:
     batch_size, target_length = input_ids_shape
-    mask = torch.empty((target_length, target_length + past_key_values_length), dtype=torch.bool, device=device)
+    mask = torch.empty(
+        (target_length, target_length + past_key_values_length),
+        dtype=torch.bool,
+        device=device,
+    )
     # ONNX doesn't support `torch.Tensor.triu` properly, thus we use this workaround
     seq_ids = torch.arange(target_length, device=device)
     mask[:, past_key_values_length:] = seq_ids[:, None] < seq_ids[None, :]
@@ -91,7 +104,9 @@ def _make_causal_mask(
     if past_key_values_length > 0:
         mask[:, :past_key_values_length] = False
 
-    expanded_mask = mask[None, None, :, :].expand(batch_size, 1, target_length, target_length + past_key_values_length)
+    expanded_mask = mask[None, None, :, :].expand(
+        batch_size, 1, target_length, target_length + past_key_values_length
+    )
     return expanded_mask
 
 
@@ -103,41 +118,53 @@ def _expand_mask(mask: torch.Tensor, tgt_length: int) -> torch.BoolTensor:
     return expanded_mask.expand(batch_size, 1, tgt_length, src_length)
 
 
-def dropout_add(x: torch.Tensor, residual: torch.Tensor, prob: float, training: bool) -> torch.Tensor:
+def dropout_add(
+    x: torch.Tensor, residual: torch.Tensor, prob: float, training: bool
+) -> torch.Tensor:
     out = F.dropout(x, p=prob, training=training)
     out = residual + out
     return out
 
 
 class TT_functional:
-    def scaled_dot_product_attention(Q, K, V, attn_mask=None, dropout_p=0.0, is_causal=False, user_batch=False):
+    def scaled_dot_product_attention(
+        Q, K, V, attn_mask=None, dropout_p=0.0, is_causal=False, user_batch=False
+    ):
         DTYPE = Q.dtype
         L, S = Q.size(-2), K.size(-2)
 
-        if user_batch: 
-            assert attn_mask is not None, "attn_mask must be provided if user_batch is True. L, S above will not be correct"
+        if user_batch:
+            assert (
+                attn_mask is not None
+            ), "attn_mask must be provided if user_batch is True. L, S above will not be correct"
             # query: [num_batch, users, num_heads, head_dim]
             # key: [num_batches, users, context, head_dim]
             # value: [num_batches, users, context, head_dim]
 
-
         def make_mask(L, S, DTYPE):
             attn_mask = torch.ones(L, S, dtype=DTYPE).tril(diagonal=0)
             inverted_mask = 1.0 - attn_mask
-            return inverted_mask.masked_fill(inverted_mask.to(torch.bool), torch.finfo(DTYPE).min)
+            return inverted_mask.masked_fill(
+                inverted_mask.to(torch.bool), torch.finfo(DTYPE).min
+            )
 
-        assert is_causal or attn_mask is not None, "attn_mask must be provided if is_causal is False"
-        assert not is_causal or attn_mask is None, "attn_mask must be None if is_causal is True"
+        assert (
+            is_causal or attn_mask is not None
+        ), "attn_mask must be provided if is_causal is False"
+        assert (
+            not is_causal or attn_mask is None
+        ), "attn_mask must be None if is_causal is True"
 
         if attn_mask is None or is_causal:
             attn_mask = make_mask(L, S, DTYPE)
 
-        #attn_weight = torch.softmax((Q @ K.transpose(-2, -1) / torch.sqrt(torch.tensor(Q.size(-1), dtype=DTYPE))) + attn_mask, dim=-1)
-        #attn_weight = torch.dropout(attn_weight, dropout_p, train)
-        ATT = Q @ K.transpose(-2, -1) / torch.tensor(Q.size(-1)**(1/2), dtype=DTYPE)
+        # attn_weight = torch.softmax((Q @ K.transpose(-2, -1) / torch.sqrt(torch.tensor(Q.size(-1), dtype=DTYPE))) + attn_mask, dim=-1)
+        # attn_weight = torch.dropout(attn_weight, dropout_p, train)
+        ATT = Q @ K.transpose(-2, -1) / torch.tensor(Q.size(-1) ** (1 / 2), dtype=DTYPE)
         attn_weight = F.softmax(ATT + attn_mask, dim=-1, dtype=DTYPE)
         attn_weight = nn.Dropout(p=dropout_p)(attn_weight)
         return attn_weight @ V
+
 
 class Attention(nn.Module):
     def __init__(self, config: RWConfig):
@@ -172,15 +199,17 @@ class Attention(nn.Module):
         self.attention_dropout = nn.Dropout(config.attention_dropout)
         self.num_kv = config.n_head_kv
 
-        #self.wq = Linear(self.hidden_size, self.hidden_size, bias=config.bias)
-        #self.wk = Linear(self.hidden_size, self.num_kv * self.head_dim, bias=config.bias)
-        #self.wv = Linear(self.hidden_size, self.num_kv * self.head_dim, bias=config.bias)
+        # self.wq = Linear(self.hidden_size, self.hidden_size, bias=config.bias)
+        # self.wk = Linear(self.hidden_size, self.num_kv * self.head_dim, bias=config.bias)
+        # self.wv = Linear(self.hidden_size, self.num_kv * self.head_dim, bias=config.bias)
         self.wq = None
         self.wk = None
         self.wv = None
         self.bias = config.bias
 
-    def _split_heads(self, fused_qkv: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _split_heads(
+        self, fused_qkv: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Split the last dimension into (num_heads, head_dim), results share same memory
         storage as `fused_qkv`
@@ -194,8 +223,10 @@ class Attention(nn.Module):
             value: [batch_size, seq_length, num_heads, head_dim]
         """
         batch, seq_len, _ = fused_qkv.shape
-        qkv = fused_qkv.view(batch, seq_len, -1, self.num_heads // self.num_kv + 2, 64) # [batch, seq_len, group(8), num_heads(18), head_dim(64)]
-        q = qkv[:, :, :, :-2]   # [batch, seq_len, group(8), num_heads(16), head_dim(64)]
+        qkv = fused_qkv.view(
+            batch, seq_len, -1, self.num_heads // self.num_kv + 2, 64
+        )  # [batch, seq_len, group(8), num_heads(18), head_dim(64)]
+        q = qkv[:, :, :, :-2]  # [batch, seq_len, group(8), num_heads(16), head_dim(64)]
         k = qkv[:, :, :, [-2]]  # [batch, seq_len, group(8), num_heads(1), head_dim(64)]
         v = qkv[:, :, :, [-1]]  # [batch, seq_len, group(8), num_heads(1), head_dim(64)]
         k = torch.broadcast_to(k, q.shape)
@@ -237,34 +268,38 @@ class Attention(nn.Module):
         # batch_size, seq_length, num_heads, head_dim -> batch_size, seq_length, num_heads * head_dim
         return x.reshape(batch_size, seq_length, self.num_heads * self.head_dim)
 
-
     def split_qkv_weights(self):
-
-        #breakpoint()
+        # breakpoint()
 
         # load wq, wk, wv from query_key_value
         self.wq = Linear(self.hidden_size, self.hidden_size, bias=self.bias)
         self.wk = Linear(self.hidden_size, self.num_kv * self.head_dim, bias=self.bias)
         self.wv = Linear(self.hidden_size, self.num_kv * self.head_dim, bias=self.bias)
 
-        self.wq.weight = nn.Parameter(self.query_key_value.weight
-                                            .reshape(self.num_kv, self.num_heads // self.num_kv + 2, 64, -1)
-                                            [:,:-2]
-                                            .reshape(self.num_heads * self.head_dim, self.hidden_size)
-                                            .clone())
+        self.wq.weight = nn.Parameter(
+            self.query_key_value.weight.reshape(
+                self.num_kv, self.num_heads // self.num_kv + 2, 64, -1
+            )[:, :-2]
+            .reshape(self.num_heads * self.head_dim, self.hidden_size)
+            .clone()
+        )
 
-        self.wk.weight = nn.Parameter(self.query_key_value.weight
-                                            .reshape(self.num_kv, self.num_heads // self.num_kv + 2, 64, -1)
-                                            [:,[-2]]
-                                            .reshape(self.num_kv * self.head_dim, self.hidden_size)
-                                            .clone())
+        self.wk.weight = nn.Parameter(
+            self.query_key_value.weight.reshape(
+                self.num_kv, self.num_heads // self.num_kv + 2, 64, -1
+            )[:, [-2]]
+            .reshape(self.num_kv * self.head_dim, self.hidden_size)
+            .clone()
+        )
 
-        self.wv.weight = nn.Parameter(self.query_key_value.weight
-                                            .reshape(self.num_kv, self.num_heads // self.num_kv + 2, 64, -1)
-                                            [:,[-1]]
-                                            .reshape(self.num_kv * self.head_dim, self.hidden_size)
-                                            .clone())
-        
+        self.wv.weight = nn.Parameter(
+            self.query_key_value.weight.reshape(
+                self.num_kv, self.num_heads // self.num_kv + 2, 64, -1
+            )[:, [-1]]
+            .reshape(self.num_kv * self.head_dim, self.hidden_size)
+            .clone()
+        )
+
         self.did_split = True
 
     def forward(
@@ -275,11 +310,13 @@ class Attention(nn.Module):
         layer_past: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         head_mask: Optional[torch.Tensor] = None,
         cos=None,
-        sin=None):
-
+        sin=None,
+    ):
         batch, seq_len, _ = hidden_states.shape
 
-        query_layer = self.wq(hidden_states).view(batch, seq_len, -1, self.num_heads // self.num_kv, 64)
+        query_layer = self.wq(hidden_states).view(
+            batch, seq_len, -1, self.num_heads // self.num_kv, 64
+        )
         key_layer = self.wk(hidden_states).view(batch, seq_len, -1, 1, 64)
         value_layer = self.wv(hidden_states).view(batch, seq_len, -1, 1, 64)
         key_layer = torch.broadcast_to(key_layer, query_layer.shape)
@@ -295,7 +332,6 @@ class Attention(nn.Module):
             for x in [query_layer, key_layer, value_layer]
         ]
 
-
         # ###
         # fused_qkv = self.query_key_value(hidden_states)  # [batch_size, seq_length, 3 x hidden_size]
         # #  3 x [batch_size, seq_length, num_heads, head_dim]
@@ -304,19 +340,23 @@ class Attention(nn.Module):
         # print("k mse:", torch.mean((key_layer2 - key_layer)**2), "shape:", key_layer.shape, key_layer2.shape)
         # print("v mse:", torch.mean((value_layer2 - value_layer)**2), "shape:", value_layer.shape, value_layer2.shape)
         # #breakpoint()
-        # #query_layer, key_layer, value_layer = query_layer2, key_layer2, value_layer2 
+        # #query_layer, key_layer, value_layer = query_layer2, key_layer2, value_layer2
         # ###
         # qkv = fused_qkv.view(batch, seq_len, -1, self.num_heads // self.num_kv + 2, 64)
 
         batch_size, q_length, _, _ = query_layer.shape
 
-        query_layer = query_layer.transpose(1, 2).reshape(batch_size * self.num_heads, q_length, self.head_dim)
+        query_layer = query_layer.transpose(1, 2).reshape(
+            batch_size * self.num_heads, q_length, self.head_dim
+        )
         key_layer = key_layer.transpose(1, 2).reshape(
             batch_size * self.num_heads,
             q_length,
             self.head_dim,
         )
-        value_layer = value_layer.transpose(1, 2).reshape(batch_size * self.num_heads, q_length, self.head_dim)
+        value_layer = value_layer.transpose(1, 2).reshape(
+            batch_size * self.num_heads, q_length, self.head_dim
+        )
 
         query_layer, key_layer = apply_rotary_pos_emb(query_layer, key_layer, cos, sin)
 
@@ -335,9 +375,13 @@ class Attention(nn.Module):
         else:
             present = None
 
-        query_layer_ = query_layer.reshape(batch_size, self.num_heads, -1, self.head_dim)
+        query_layer_ = query_layer.reshape(
+            batch_size, self.num_heads, -1, self.head_dim
+        )
         key_layer_ = key_layer.reshape(batch_size, self.num_heads, -1, self.head_dim)
-        value_layer_ = value_layer.reshape(batch_size, self.num_heads, -1, self.head_dim)
+        value_layer_ = value_layer.reshape(
+            batch_size, self.num_heads, -1, self.head_dim
+        )
 
         attn_output = TT_functional.scaled_dot_product_attention(
             query_layer_, key_layer_, value_layer_, None, 0.0, is_causal=True
@@ -352,7 +396,6 @@ class Attention(nn.Module):
         outputs = (output_tensor, present)
 
         return outputs
-        
 
 
 class MLP(nn.Module):
@@ -384,7 +427,9 @@ class DecoderLayer(nn.Module):
 
         self.mlp = MLP(config)
 
-        self.apply_residual_connection_post_layernorm = config.apply_residual_connection_post_layernorm
+        self.apply_residual_connection_post_layernorm = (
+            config.apply_residual_connection_post_layernorm
+        )
         self.hidden_dropout = config.hidden_dropout
 
         self.config = config
@@ -397,9 +442,9 @@ class DecoderLayer(nn.Module):
         layer_past: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         head_mask: Optional[torch.Tensor] = None,
         cos=None,
-        sin=None
+        sin=None,
     ):
-        #breakpoint()
+        # breakpoint()
         ln_attn = self.ln_attn(hidden_states)
         ln_mlp = self.ln_mlp(hidden_states)
 
@@ -413,7 +458,7 @@ class DecoderLayer(nn.Module):
             alibi=alibi,
             head_mask=head_mask,
             cos=cos,
-            sin=sin
+            sin=sin,
         )
 
         attention_output = attn_outputs[0]
@@ -424,7 +469,10 @@ class DecoderLayer(nn.Module):
         mlp_output = self.mlp(ln_mlp)
 
         output = dropout_add(
-            mlp_output + attention_output, residual, self.config.hidden_dropout, training=self.training
+            mlp_output + attention_output,
+            residual,
+            self.config.hidden_dropout,
+            training=self.training,
         )
 
         if self.config.use_cache:
@@ -436,10 +484,13 @@ class DecoderLayer(nn.Module):
 
 
 class RWPreTrainedModel(PreTrainedModel):
-    _keys_to_ignore_on_load_missing = [r"h.*.self_attention.scale_mask_softmax.causal_mask", r"lm_head.weight"]
+    _keys_to_ignore_on_load_missing = [
+        r"h.*.self_attention.scale_mask_softmax.causal_mask",
+        r"lm_head.weight",
+    ]
     """
     An abstract class to handle weights initialization and a simple interface for downloading and loading pretrained
-    models.
+    tt_models.
     """
 
     config_class = RWConfig
@@ -519,7 +570,9 @@ class RWModel(RWPreTrainedModel):
         self.word_embeddings = nn.Embedding(config.vocab_size, self.embed_dim)
 
         # Transformer blocks
-        self.h = nn.ModuleList([DecoderLayer(config) for _ in range(config.num_hidden_layers)])
+        self.h = nn.ModuleList(
+            [DecoderLayer(config) for _ in range(config.num_hidden_layers)]
+        )
 
         # Final Layer Norm
         self.ln_f = LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
@@ -537,7 +590,10 @@ class RWModel(RWPreTrainedModel):
         return self.word_embeddings
 
     def _prepare_attn_mask(
-        self, attention_mask: torch.Tensor, input_shape: Tuple[int, int], past_key_values_length: int
+        self,
+        attention_mask: torch.Tensor,
+        input_shape: Tuple[int, int],
+        past_key_values_length: int,
     ) -> torch.BoolTensor:
         # create causal mask
         # [batch_size, seq_length] -> [batch_size, 1, tgt_length, src_length]
@@ -547,13 +603,17 @@ class RWModel(RWPreTrainedModel):
 
         if src_length > 1:
             combined_attention_mask = _make_causal_mask(
-                input_shape, device=device, past_key_values_length=past_key_values_length
+                input_shape,
+                device=device,
+                past_key_values_length=past_key_values_length,
             )
 
         # [batch_size, seq_length] -> [batch_size, 1, tgt_length, src_length]
         expanded_attn_mask = _expand_mask(attention_mask, tgt_length=src_length)
         combined_attention_mask = (
-            expanded_attn_mask if combined_attention_mask is None else expanded_attn_mask | combined_attention_mask
+            expanded_attn_mask
+            if combined_attention_mask is None
+            else expanded_attn_mask | combined_attention_mask
         )
 
         return combined_attention_mask
@@ -588,13 +648,19 @@ class RWModel(RWPreTrainedModel):
             raise ValueError(f"Got unexpected arguments: {deprecated_arguments}")
 
         output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+            output_hidden_states
+            if output_hidden_states is not None
+            else self.config.output_hidden_states
         )
         use_cache = self.config.use_cache
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
 
         if input_ids is not None and inputs_embeds is not None:
-            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+            raise ValueError(
+                "You cannot specify both input_ids and inputs_embeds at the same time"
+            )
         elif input_ids is not None:
             batch_size, seq_length = input_ids.shape
         elif inputs_embeds is not None:
@@ -613,7 +679,7 @@ class RWModel(RWPreTrainedModel):
 
         if inputs_embeds is None:
             inputs_embeds = self.word_embeddings(input_ids)
-        
+
         hidden_states = inputs_embeds
 
         presents = () if use_cache else None
@@ -627,12 +693,16 @@ class RWModel(RWPreTrainedModel):
             past_key_values_length = past_key_values[0][0].shape[2]
             seq_length_with_past = seq_length_with_past + past_key_values_length
         if attention_mask is None:
-            attention_mask = torch.ones((batch_size, seq_length_with_past), device=hidden_states.device)
+            attention_mask = torch.ones(
+                (batch_size, seq_length_with_past), device=hidden_states.device
+            )
         else:
             attention_mask = attention_mask.to(hidden_states.device)
 
         if self.alibi:
-            alibi = build_alibi_tensor(attention_mask, self.num_heads, dtype=hidden_states.dtype)
+            alibi = build_alibi_tensor(
+                attention_mask, self.num_heads, dtype=hidden_states.dtype
+            )
         else:
             alibi = None
 
@@ -642,23 +712,23 @@ class RWModel(RWPreTrainedModel):
             past_key_values_length=past_key_values_length,
         )
 
-
         # Invert mask
         if attention_mask is not None:
             attention_mask = 1.0 - attention_mask
-            attention_mask.masked_fill_(attention_mask.to(torch.bool), torch.finfo(hidden_states.dtype).min)
+            attention_mask.masked_fill_(
+                attention_mask.to(torch.bool), torch.finfo(hidden_states.dtype).min
+            )
             if self.batch_users:
                 num_batch, users, kv_length = attention_mask.size()
-                attention_mask = attention_mask.view(num_batch, users, 1, kv_length).expand(num_batch, users, self.head_total, kv_length)
+                attention_mask = attention_mask.view(
+                    num_batch, users, 1, kv_length
+                ).expand(num_batch, users, self.head_total, kv_length)
 
         # Rotary Embeddings
         cos, sin = self.rotary_emb()
         cos, sin = gather_cos_sin(cos, sin, position_ids, batch_size=batch_size)
 
         for i, (block, layer_past) in enumerate(zip(self.h, past_key_values)):
-
-
-
             outputs = block(
                 hidden_states,
                 layer_past=layer_past,
@@ -666,20 +736,20 @@ class RWModel(RWPreTrainedModel):
                 head_mask=head_mask[i],
                 alibi=alibi,
                 cos=cos,
-                sin=sin
+                sin=sin,
             )
 
             hidden_states = outputs[0]
             if use_cache is True:
                 presents = presents + (outputs[1],)
 
-
         # Add last hidden state
         hidden_states = self.ln_f(hidden_states)
 
-
         if not return_dict:
-            return tuple(v for v in [hidden_states, presents, all_hidden_states] if v is not None)
+            return tuple(
+                v for v in [hidden_states, presents, all_hidden_states] if v is not None
+            )
 
         return BaseModelOutputWithPastAndCrossAttentions(
             last_hidden_state=hidden_states,
@@ -689,7 +759,10 @@ class RWModel(RWPreTrainedModel):
 
 
 class RWForCausalLM(RWPreTrainedModel):
-    _keys_to_ignore_on_load_missing = [r"h.*.self_attention.scale_mask_softmax.causal_mask", r"lm_head.weight"]
+    _keys_to_ignore_on_load_missing = [
+        r"h.*.self_attention.scale_mask_softmax.causal_mask",
+        r"lm_head.weight",
+    ]
 
     def __init__(self, config: RWConfig):
         super().__init__(config)
@@ -756,7 +829,9 @@ class RWForCausalLM(RWPreTrainedModel):
         if len(deprecated_arguments) > 0:
             raise ValueError(f"Got unexpected arguments: {deprecated_arguments}")
 
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
 
         transformer_outputs = self.transformer(
             input_ids,
@@ -781,7 +856,8 @@ class RWForCausalLM(RWPreTrainedModel):
             # Flatten the tokens
             loss_fct = CrossEntropyLoss()
             loss = loss_fct(
-                shift_logits.view(batch_size * seq_length, vocab_size), shift_labels.view(batch_size * seq_length)
+                shift_logits.view(batch_size * seq_length, vocab_size),
+                shift_labels.view(batch_size * seq_length),
             )
 
         if not return_dict:
@@ -797,7 +873,9 @@ class RWForCausalLM(RWPreTrainedModel):
         )
 
     def _reorder_cache(
-        self, past: Tuple[Tuple[torch.Tensor, torch.Tensor], ...], beam_idx: torch.LongTensor
+        self,
+        past: Tuple[Tuple[torch.Tensor, torch.Tensor], ...],
+        beam_idx: torch.LongTensor,
     ) -> Tuple[Tuple[torch.Tensor, torch.Tensor], ...]:
         """
         This function is used to re-order the `past_key_values` cache if [`~PreTrainedModel.beam_search`] or
@@ -806,11 +884,15 @@ class RWForCausalLM(RWPreTrainedModel):
 
         Output shares the same memory storage as `past`.
         """
-        standardized_past = self._convert_to_standard_cache(past, batch_size=len(beam_idx))
+        standardized_past = self._convert_to_standard_cache(
+            past, batch_size=len(beam_idx)
+        )
 
         # Get a copy of `beam_idx` on all the devices where we need those indices.
         device_to_beam_idx = {
-            past_state.device: beam_idx.to(past_state.device) for layer_past in past for past_state in layer_past
+            past_state.device: beam_idx.to(past_state.device)
+            for layer_past in past
+            for past_state in layer_past
         }
         reordered_past = tuple(
             (

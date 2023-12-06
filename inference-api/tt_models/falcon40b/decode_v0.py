@@ -8,8 +8,8 @@ from time import sleep
 from multiprocessing import Queue
 
 import torch
-from pybudify40 import PyBudify
-from multilineoutput import MultiLineOutput
+from .pybudify40 import PyBudify
+from .multilineoutput import MultiLineOutput
 from reprint import output as reprint_output
 import torch.nn.functional as F
 from transformers.generation.utils import top_k_top_p_filtering
@@ -155,12 +155,12 @@ def load_model_and_tokenizer(args):
         print("Cache folder not found. Reverting to default location")
 
     # Important: HF libraries must be set after changing the os.environ cache directory!
-    from models.falcon40b.configuration_RW import RWConfig
-    from models.falcon40b.debug import RWForCausalLM as RWForCausalLMTTdebug
-    from models.falcon40b.modelling_RW_torch1 import RWForCausalLM as RWForCausalLMTorch1
-    from models.falcon40b.tt_modeling_RW import RWForCausalLM as RWForCausalLMTT
-    from models.falcon40b.tt_modeling_RW_odkv import RWForCausalLM as RWForCausalODKV
-    from models.falcon40b.tt_modeling_RW_odkv_t import RWForCausalLM as RWForCausalODKV_T
+    from tt_models.falcon40b.configuration_RW import RWConfig
+    from tt_models.falcon40b.debug import RWForCausalLM as RWForCausalLMTTdebug
+    from tt_models.falcon40b.modelling_RW_torch1 import RWForCausalLM as RWForCausalLMTorch1
+    from tt_models.falcon40b.tt_modeling_RW import RWForCausalLM as RWForCausalLMTT
+    from tt_models.falcon40b.tt_modeling_RW_odkv import RWForCausalLM as RWForCausalODKV
+    from tt_models.falcon40b.tt_modeling_RW_odkv_t import RWForCausalLM as RWForCausalODKV_T
     from transformers import AutoModelForCausalLM, AutoTokenizer, logging
 
     logging.set_verbosity_error()
