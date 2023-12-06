@@ -2,6 +2,7 @@ import os
 import threading
 
 import requests
+from inference_config import inference_config
 
 
 def test_api_call(prompt_extra="", print_output=True):
@@ -11,8 +12,8 @@ def test_api_call(prompt_extra="", print_output=True):
     # export LLM_CHAT_API_URL="${DEPLOY_URL}/predictions/falcon40b/"
 
     # API_URL = os.environ["LLM_CHAT_API_URL"]
-    # API_URL = "http://127.0.0.1:1223/predictions/falcon40b"
-    API_URL = "http://127.0.0.1:7000/predictions/falcon40b"
+    API_URL = f"http://127.0.0.1:{inference_config.reverse_proxy_port}/predictions/falcon40b"
+    # API_URL = f"http://127.0.0.1:{inference_config.backend_server_port}/predictions/falcon40b"
 
     headers = {"Authorization": os.environ.get('AUTHORIZATION')}
 

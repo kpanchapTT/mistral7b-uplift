@@ -140,7 +140,7 @@ def parse_args():
         "--hostname",
         dest="hostname",
         type=str,
-        default=f"http://127.0.0.1:{inference_config.reverse_proxy_port}",
+        default=f"http://127.0.0.1:{inference_config.backend_server_port}",
         help="hostname to send requests to.",
     )
     args = parser.parse_args()
