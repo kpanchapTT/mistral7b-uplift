@@ -75,6 +75,13 @@ python inference-api/_mock_server_.py
 python inference-api/test_inference_api.py
 ```
 
+# Building Docker images
+
+If running on a macbook or non x86_64 platform use the `--platform flag`:
+```bash
+docker build -t project-falcon/falcon40b-demo:1.0.0 --platform=linux/x86_64 .
+```
+
 # [WIP] Documentation 
 
 `inference_api_server.py` runs the main flask server that is behind the proxy.

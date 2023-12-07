@@ -37,3 +37,4 @@ site/
 !requirements.txt
 !requirements_dev.txt
 !inference-api/test_data/before_top_pk_output.pt
+!requirements_minimal.txt
