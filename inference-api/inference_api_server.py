@@ -19,12 +19,11 @@ app = Flask(__name__)
 app.secret_key = "your_secret_key"
 INIT_ID = "COMPILE-INITIALIZATION"
 
-# Store current context
-# Store conversation history
-# Initialize the lock
-
 
 class Context:
+    # Store current context
+    # Store conversation history
+    # Initialize the lock
     def __init__(self):
         self.conversations = {}
         self.user_status = {}  # {user_id:q_position}
@@ -37,184 +36,269 @@ class Context:
 
 context = Context()
 
-# 1L pytorch no weights
-# override_args = [
-#     "--mode",
-#     "concurrent",
-#     "-l",
-#     "1",
-#     "--version",
-#     "efficient-40b",
-#     "-d",
-#     "pytorch",
-#     "--arch",
-#     "nebula-galaxy",
-#     "--num-tokens",
-#     "1_000_000_000",
-#     "--user-rows",
-#     "32",
-#     "--precision",
-#     "fp32",
-#     "--num-chips",
-#     "32",
-#     "-mf",
-#     "8",
-#     "--log-level",
-#     "ERROR",
-#     "--opt-level",
-#     "4",
-#     "--hf-cache",
-#     inference_config.hf_cache,
-#     "-odlmh",
-#     "-plmh",
-#     "-fv",
-#     "--flash-decode",
-#     "--top-k",
-#     "5",
-#     "--top-p",
-#     "0.9",
-# ]
+
+def get_falcon40b_backend_overrides(
+    use_60_layers=True,
+    use_2_layers=False,
+    pytorch_no_weights=True,
+    save_tti=False,
+    load_tti=True,
+):
+    # 2 layer model is used for debugging and testing
+    if use_2_layers and save_tti:
+        override_args = [
+            "--mode",
+            "concurrent",
+            "-l",
+            "2",  # 2 layers
+            "--version",
+            "efficient-40b",
+            "-d",
+            "silicon",
+            "--arch",
+            "nebula-galaxy",
+            "--num-tokens",
+            "20",
+            "--user-rows",
+            "32",
+            "--precision",
+            "bf16",
+            "--num-chips",
+            "32",
+            "-mf",
+            "8",
+            "--log-level",
+            "DEBUG",
+            "--opt-level",
+            "4",
+            "--hf-cache",
+            inference_config.hf_cache,
+            "-odlmh",
+            "-plmh",
+            "-fv",
+            "--flash-decode",
+            "--top-k",
+            "5",
+            "--top-p",
+            "0.9",
+            "--save",
+            inference_config.tti_cache + "/flash_decode_2l_v0_test.tti",
+            "--load-pretrained",
+            "--model",
+            "tiiuae/falcon-40b-instruct",
+        ]
+    elif use_2_layers and load_tti:
+        override_args = [
+            "--mode",
+            "concurrent",
+            "-l",
+            "2",  # 2 layers
+            "--version",
+            "efficient-40b",
+            "-d",
+            "silicon",
+            "--arch",
+            "nebula-galaxy",
+            "--num-tokens",
+            "1_000_000_000",
+            "--num-outer-loops",
+            "100_000",
+            "--user-rows",
+            "32",
+            "--precision",
+            "bf16",
+            "--num-chips",
+            "32",
+            "-mf",
+            "8",
+            "--log-level",
+            "ERROR",
+            "--opt-level",
+            "4",
+            "--hf-cache",
+            inference_config.hf_cache,
+            "-odlmh",
+            "-plmh",
+            "-fv",
+            "--flash-decode",
+            "--top-k",
+            "5",
+            "--top-p",
+            "0.9",
+            "--load",
+            inference_config.tti_cache + "/flash_decode_2l_v0_test.tti",
+            "--load-pretrained",
+            "--model",
+            "tiiuae/falcon-40b-instruct",
+        ]
+    elif use_60_layers and save_tti:
+        override_args = [
+            "--mode",
+            "sequential",
+            "-l",
+            "60",
+            "--version",
+            "efficient-40b",
+            "-d",
+            "silicon",
+            "--arch",
+            "nebula-galaxy",
+            "--num-tokens",
+            "5000",
+            "--user-rows",
+            "32",
+            "--precision",
+            "bf16",
+            "--num-chips",
+            "32",
+            "-mf",
+            "8",
+            "--log-level",
+            "DEBUG",
+            "--opt-level",
+            "4",
+            "--hf-cache",
+            inference_config.hf_cache,
+            "--enable-tvm-cache",
+            inference_config.tvm_cache
+            + "/_colmans_tvm_falcon_odlmhpfv_flash_32c_8mf_0af_60l_2048s_"
+            "-odlmh",
+            "-plmh",
+            "-fv",
+            "--flash-decode",
+            "--top-k",
+            "5",
+            "--top-p",
+            "0.9",
+            "--save",
+            inference_config.tti_cache + "/flash_decode_60l_v0_instruct.tti",
+            "--load-pretrained",
+            "--model",
+            "tiiuae/falcon-40b-instruct",
+        ]
+    elif use_60_layers and load_tti:
+        override_args = [
+            "--mode",
+            "concurrent",
+            "-l",
+            "60",
+            "--version",
+            "efficient-40b",
+            "-d",
+            "silicon",
+            "--arch",
+            "nebula-galaxy",
+            "--num-tokens",
+            "1000000",
+            "--num-outer-loops",
+            "1000",
+            "--user-rows",
+            "32",
+            "--precision",
+            "bf16",
+            "--num-chips",
+            "32",
+            "-mf",
+            "8",
+            "--log-level",
+            "ERROR",
+            "--opt-level",
+            "4",
+            "--hf-cache",
+            inference_config.hf_cache,
+            "-odlmh",
+            "-plmh",
+            "-fv",
+            "--flash-decode",
+            "--top-k",
+            "5",
+            "--top-p",
+            "0.9",
+            "--load",
+            inference_config.tti_cache + "/flash_decode_60l_v0_instruct.tti",
+            "--load-pretrained",
+            "--model",
+            "tiiuae/falcon-40b-instruct",
+        ]
+    elif pytorch_no_weights:
+        # 1L pytorch no weights for debug and testing
+        override_args = [
+            "--mode",
+            "concurrent",
+            "-l",
+            "1",
+            "--version",
+            "efficient-40b",
+            "-d",
+            "pytorch",  # pytorch instead of silicon
+            "--arch",
+            "nebula-galaxy",
+            "--num-tokens",
+            "1_000_000_000",
+            "--user-rows",
+            "32",
+            "--precision",
+            "fp32",
+            "--num-chips",
+            "32",
+            "-mf",
+            "8",
+            "--log-level",
+            "ERROR",
+            "--opt-level",
+            "4",
+            "--hf-cache",
+            inference_config.hf_cache,
+            "-odlmh",
+            "-plmh",
+            "-fv",
+            "--flash-decode",
+            "--top-k",
+            "5",
+            "--top-p",
+            "0.9",
+            "--model",
+            "tiiuae/falcon-40b-instruct",
+        ]
+    else:
+        raise ValueError(
+            f"Invalid overrides for: use_60_layers={use_60_layers}, use_2_layers={use_2_layers}, pytorch_no_weights={pytorch_no_weights}, save_tti={save_tti}, load_tti={load_tti}"
+        )
+    return override_args
 
 
-# # # 60L pytorch
-# # 1L pytorch no weights
-# override_args = ['--mode', 'concurrent', '-l', '1', '--version', 'efficient-40b', '-d',
-#                  'pytorch', '--arch', 'nebula-galaxy', '--num-tokens', '1_000_000_000', '--user-rows',
-#                  '32', '--precision', 'fp32', '--num-chips', '32', '-mf', '8',
-#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', inference_config.hf_cache,
-#                  '-odlmh', '-plmh', '-fv', '--flash-decode', #'--top-k', '5', '--top-p', '0.9',
-#                  ]
+def get_backend_override_args():
+    # terminate env vars and pass to switching logic with simple logging
+    use_2_layers = os.environ.get("FALCON_40B_2LAYER") == "1"
+    pytorch_no_weights = os.environ.get("FALCON_40B_PYTORCH_NO_WEIGHTS") == "1"
+    save_tti = os.environ.get("FALCON_40B_SAVE") == "1"
+    use_60_layers = not use_2_layers and not pytorch_no_weights
+    load_tti = not save_tti
+    assert not (
+        pytorch_no_weights and save_tti
+    ), "cannot save_tti with pytorch_no_weights."
+    print(
+        f"getting overrides for: use_60_layers={use_60_layers}, use_2_layers={use_2_layers}, pytorch_no_weights={pytorch_no_weights}, save_tti={save_tti}, load_tti={load_tti}"
+    )
+    if pytorch_no_weights or use_2_layers:
+        print(
+            f"WARNING: pytorch_no_weights={pytorch_no_weights}, use_2_layers={use_2_layers} is run for debug and testing only."
+        )
+    override_args = get_falcon40b_backend_overrides(
+        use_60_layers=use_60_layers,
+        use_2_layers=use_2_layers,
+        pytorch_no_weights=pytorch_no_weights,
+        save_tti=save_tti,
+        load_tti=load_tti,
+    )
+    print(override_args)
+    return override_args
 
-# # 60L pytorch
-# override_args = ['--mode', 'concurrent', '-l', '1', '--version', 'efficient-40b', '-d',
-#                  'pytorch', '--arch', 'nebula-galaxy', '--num-tokens', '1_000_000_000', '--user-rows',
-#                  '32', '--precision', 'fp32', '--num-chips', '32', '-mf', '8',
-#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', inference_config.hf_cache,
-#                  '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9', '--load-pretrained',
-#                  '--model', 'tiiuae/falcon-40b-instruct'
-#                  ]
-
-# 2L Silicon save
-override_args = [
-    "--mode",
-    "concurrent",
-    "-l",
-    "2",
-    "--version",
-    "efficient-40b",
-    "-d",
-    "silicon",
-    "--arch",
-    "nebula-galaxy",
-    "--num-tokens",
-    "20",
-    "--user-rows",
-    "32",
-    "--precision",
-    "bf16",
-    "--num-chips",
-    "32",
-    "-mf",
-    "8",
-    "--log-level",
-    "DEBUG",
-    "--opt-level",
-    "4",
-    "--hf-cache",
-    inference_config.hf_cache,
-    "-odlmh",
-    "-plmh",
-    "-fv",
-    "--flash-decode",
-    "--top-k",
-    "5",
-    "--top-p",
-    "0.9",
-    "--save",
-    inference_config.tti_cache + "/flash_decode_2l_v0_test.tti",
-    "--load-pretrained",
-    "--model",
-    "tiiuae/falcon-40b-instruct",
-]
-
-# 2L silicon load
-# override_args = [
-#     "--mode",
-#     "concurrent",
-#     "-l",
-#     "2",
-#     "--version",
-#     "efficient-40b",
-#     "-d",
-#     "silicon",
-#     "--arch",
-#     "nebula-galaxy",
-#     "--num-tokens",
-#     "1_000_000_000",
-#     "--num-outer-loops",
-#     "100_000",
-#     "--user-rows",
-#     "32",
-#     "--precision",
-#     "bf16",
-#     "--num-chips",
-#     "32",
-#     "-mf",
-#     "8",
-#     "--log-level",
-#     "ERROR",
-#     "--opt-level",
-#     "4",
-#     "--hf-cache",
-#     inference_config.hf_cache,
-#     "-odlmh",
-#     "-plmh",
-#     "-fv",
-#     "--flash-decode",
-#     "--top-k",
-#     "5",
-#     "--top-p",
-#     "0.9",
-#     "--load",
-#     "inference_config.tti_cache + "/flash_decode_2l_v0_test.tti",
-#     "--load-pretrained",
-#     "--model",
-#     "tiiuae/falcon-40b-instruct",
-# ]
-
-# # 60L silicon
-# override_args = ['--mode', 'concurrent', '-l', '60', '--version', 'efficient-40b', '-d',
-#                  'silicon', '--arch', 'nebula-galaxy', '--num-tokens', '1000000', '--num-outer-loops', '1000',
-#                  '--user-rows', '32', '--precision', 'bf16', '--num-chips', '32', '-mf', '8',
-#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', inference_config.hf_cache,
-#                  '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9', '--load', inference_config.tti_cache + '/flash_decode_60l_v0_instruct.tti',
-#                  '--load-pretrained', '--model', 'tiiuae/falcon-40b-instruct',
-#                  ]
-
-# # 60L silicon instruct save
-# override_args = ['--mode', 'sequential', '-l', '60', '--version', 'efficient-40b', '-d',
-#                  'silicon', '--arch', 'nebula-galaxy', '--num-tokens', '5000',
-#                  '--user-rows', '32', '--precision', 'bf16', '--num-chips', '32', '-mf', '8',
-#                  '--log-level', 'DEBUG', '--opt-level', '4', '--hf-cache', inference_config.hf_cache,
-#                  '--enable-tvm-cache', inference_config.tvm_cache + "/_colmans_tvm_falcon_odlmhpfv_flash_32c_8mf_0af_60l_2048s_"
-#                  '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9', '--save', inference_config.tti_cache + '/flash_decode_60l_v0_instruct.tti',
-#                  '--load-pretrained', '--model', 'tiiuae/falcon-40b-instruct',
-#                  ]
-
-# # 60L silicon instruct load
-# override_args = ['--mode', 'concurrent', '-l', '60', '--version', 'efficient-40b', '-d',
-#                  'silicon', '--arch', 'nebula-galaxy', '--num-tokens', '1000000', '--num-outer-loops', '1000',
-#                  '--user-rows', '32', '--precision', 'bf16', '--num-chips', '32', '-mf', '8',
-#                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', inference_config.hf_cache,
-#                  '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9', '--load', inference_config.tti_cache + '/flash_decode_60l_v0_instruct.tti',
-#                  '--load-pretrained', '--model', 'tiiuae/falcon-40b-instruct',
-#                  ]
 
 verbose = False
-MAX_USER_ROWS = 32
 
 
-def initialize_decode_backend():
+def initialize_decode_backend(override_args):
     global input_queue
     global output_queue
     global status_queue
@@ -262,6 +346,7 @@ def _reclaim_output_queues():
 
 
 def respond_to_users():
+    MAX_USER_ROWS = 32
     loop = 0
     while True:
         response_session_id, response = output_queue.get()
@@ -364,7 +449,7 @@ def inference():
         print(f"PREVIOUS EXISTING SESSION: {session['session_id']}")
 
     # if input_q full, retry with simple back-off
-    for timeout in [1,1,1,1,1,5,5,5,10]:
+    for timeout in [1, 1, 1, 1, 1, 5, 5, 5, 10]:
         if input_queue.qsize() >= inference_config.max_input_qsize:
             # add jitter
             sleep_t = timeout * random.random()
@@ -399,5 +484,6 @@ if __name__ == "__main__":
     # Create server log directory
     if not os.path.exists("server_logs"):
         os.makedirs("server_logs")
-    initialize_decode_backend()
-    app.run(debug=True, port=inference_config.backend_server_port, host="0.0.0.0")
+    override_args = get_backend_override_args()
+    initialize_decode_backend(override_args)
+    app.run(debug=False, port=inference_config.backend_server_port, host="0.0.0.0")
