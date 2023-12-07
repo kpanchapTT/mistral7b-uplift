@@ -49,4 +49,5 @@ COPY "run_inference_api.sh" "${APP_DIR}"
 
 RUN pip3 install -r "requirements_minimal.txt"
 
-CMD ["bash", "run_inference_api.sh"]
+# CMD ["bash", "run_inference_api.sh"]
+ENTRYPOINT sleep infinity

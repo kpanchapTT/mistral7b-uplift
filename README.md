@@ -75,11 +75,40 @@ python inference-api/_mock_server_.py
 python inference-api/test_inference_api.py
 ```
 
-# Building Docker images
+# Docker images
+
+## Building Docker images
 
 If running on a macbook or non x86_64 platform use the `--platform flag`:
 ```bash
 docker build -t project-falcon/falcon40b-demo:1.0.0 --platform=linux/x86_64 .
+```
+
+## Running docker images
+
+By default Docker containers have access to all of the host's CPU cores and RAM.
+
+Here is an example mapping the resources to the docker container from a BM host connected to a galaxy, this is a similar configuration to how cloud k8s variables would be set:
+
+```bash
+docker run --rm -ti \
+    --shm-size=4g \
+    --device /dev/tenstorrent \
+    -p 1223:1223 \
+    -v /dev/hugepages-1G:/dev/hugepages-1G \
+    -v /proj_sw/large-model-cache/falcon40b:/mnt/falcon-galaxy-store/hf_cache \
+    -v /proj_sw/large-model-cache/falcon40b/tvm_cache:/mnt/falcon-galaxy-store/tvm_cache \
+    -v /home/tt-admin/project-falcon/:/mnt/falcon-galaxy-store/tti_cache \
+    -e MODEL_WEKA_DIR=/mnt/falcon-galaxy-store \
+    -e JWT_SECRET=test-secret-456\
+    project-falcon/falcon40b-demo:0.0.0-test bash
+```
+
+For testing the following environment variables can be used to switch the backend server override arguments:
+```bash
+-e FALCON_40B_2LAYER='1' 
+-e FALCON_40B_SAVE='1'
+-e FALCON_40B_PYTORCH_NO_WEIGHTS='1' 
 ```
 
 # [WIP] Documentation 
