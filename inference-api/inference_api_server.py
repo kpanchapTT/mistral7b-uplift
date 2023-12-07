@@ -43,7 +43,11 @@ def get_falcon40b_backend_overrides(
     pytorch_no_weights=True,
     save_tti=False,
     load_tti=True,
+    log_level_debug=False,
 ):
+    log_level = "ERROR"
+    if log_level_debug:
+        log_level = "DEBUG"
     # 2 layer model is used for debugging and testing
     if use_2_layers and save_tti:
         override_args = [
@@ -154,7 +158,7 @@ def get_falcon40b_backend_overrides(
             "-mf",
             "8",
             "--log-level",
-            "DEBUG",
+            log_level,
             "--opt-level",
             "4",
             "--hf-cache",
@@ -201,7 +205,7 @@ def get_falcon40b_backend_overrides(
             "-mf",
             "8",
             "--log-level",
-            "ERROR",
+            log_level,
             "--opt-level",
             "4",
             "--hf-cache",
@@ -244,7 +248,7 @@ def get_falcon40b_backend_overrides(
             "-mf",
             "8",
             "--log-level",
-            "ERROR",
+            "DEBUG",
             "--opt-level",
             "4",
             "--hf-cache",
@@ -272,13 +276,14 @@ def get_backend_override_args():
     use_2_layers = os.environ.get("FALCON_40B_2LAYER") == "1"
     pytorch_no_weights = os.environ.get("FALCON_40B_PYTORCH_NO_WEIGHTS") == "1"
     save_tti = os.environ.get("FALCON_40B_SAVE") == "1"
+    log_level_debug = os.environ.get("FALCON_40B_LOG_LEVEL_DEBUG") == "1"
     use_60_layers = not use_2_layers and not pytorch_no_weights
     load_tti = not save_tti
     assert not (
         pytorch_no_weights and save_tti
     ), "cannot save_tti with pytorch_no_weights."
     print(
-        f"getting overrides for: use_60_layers={use_60_layers}, use_2_layers={use_2_layers}, pytorch_no_weights={pytorch_no_weights}, save_tti={save_tti}, load_tti={load_tti}"
+        f"getting overrides for: use_60_layers={use_60_layers}, use_2_layers={use_2_layers}, pytorch_no_weights={pytorch_no_weights}, save_tti={save_tti}, load_tti={load_tti}, log_level_debug={log_level_debug}"
     )
     if pytorch_no_weights or use_2_layers:
         print(
@@ -290,6 +295,7 @@ def get_backend_override_args():
         pytorch_no_weights=pytorch_no_weights,
         save_tti=save_tti,
         load_tti=load_tti,
+        log_level_debug=log_level_debug,
     )
     print(override_args)
     return override_args
