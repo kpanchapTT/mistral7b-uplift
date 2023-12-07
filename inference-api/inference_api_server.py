@@ -75,6 +75,7 @@ override_args = [
     "0.9",
 ]
 
+
 # # # 60L pytorch
 # # 1L pytorch no weights
 # override_args = ['--mode', 'concurrent', '-l', '1', '--version', 'efficient-40b', '-d',
@@ -93,7 +94,50 @@ override_args = [
 #                  '--model', 'tiiuae/falcon-40b-instruct'
 #                  ]
 
-# # 2L silicon
+# 2L Silicon save
+override_args = [
+    "--mode",
+    "concurrent",
+    "-l",
+    "2",
+    "--version",
+    "efficient-40b",
+    "-d",
+    "silicon",
+    "--arch",
+    "nebula-galaxy",
+    "--num-tokens",
+    "20",
+    "--user-rows",
+    "32",
+    "--precision",
+    "bf16",
+    "--num-chips",
+    "32",
+    "-mf",
+    "8",
+    "--log-level",
+    "DEBUG",
+    "--opt-level",
+    "4",
+    "--hf-cache",
+    inference_config.hf_cache,
+    "-odlmh",
+    "-plmh",
+    "-fv",
+    "--flash-decode",
+    "--top-k",
+    "5",
+    "--top-p",
+    "0.9",
+    "--save",
+    inference_config.tti_cache + "/flash_decode_2l_v0_test.tti",
+    "--load-pretrained",
+    "--model",
+    "tiiuae/falcon-40b-instruct",
+]
+
+# 2L silicon load
 # override_args = [
 #     "--mode",
 #     "concurrent",
@@ -132,7 +176,7 @@ override_args = [
 #     "--top-p",
 #     "0.9",
 #     "--load",
-#     "flash_decode_2l_v0_test.tti",
+#     "inference_config.tti_cache + "/flash_decode_2l_v0_test.tti",
 #     "--load-pretrained",
 #     "--model",
 #     "tiiuae/falcon-40b-instruct",
@@ -143,16 +187,26 @@ override_args = [
 #                  'silicon', '--arch', 'nebula-galaxy', '--num-tokens', '1000000', '--num-outer-loops', '1000',
 #                  '--user-rows', '32', '--precision', 'bf16', '--num-chips', '32', '-mf', '8',
 #                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', inference_config.hf_cache,
-#                  '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9', '--load', 'flash_decode_60l_v0_instruct.tti',
+#                  '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9', '--load', inference_config.tti_cache + '/flash_decode_60l_v0_instruct.tti',
 #                  '--load-pretrained', '--model', 'tiiuae/falcon-40b-instruct',
 #                  ]
 
-# # 60L silicon instruct
+# # 60L silicon instruct save
+# override_args = ['--mode', 'sequential', '-l', '60', '--version', 'efficient-40b', '-d',
+#                  'silicon', '--arch', 'nebula-galaxy', '--num-tokens', '5000',
+#                  '--user-rows', '32', '--precision', 'bf16', '--num-chips', '32', '-mf', '8',
+#                  '--log-level', 'DEBUG', '--opt-level', '4', '--hf-cache', inference_config.hf_cache,
+#                  '--enable-tvm-cache', inference_config.tvm_cache + "/_colmans_tvm_falcon_odlmhpfv_flash_32c_8mf_0af_60l_2048s_"
+#                  '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9', '--save', inference_config.tti_cache + '/flash_decode_60l_v0_instruct.tti',
+#                  '--load-pretrained', '--model', 'tiiuae/falcon-40b-instruct',
+#                  ]
+
+# # 60L silicon instruct load
 # override_args = ['--mode', 'concurrent', '-l', '60', '--version', 'efficient-40b', '-d',
 #                  'silicon', '--arch', 'nebula-galaxy', '--num-tokens', '1000000', '--num-outer-loops', '1000',
 #                  '--user-rows', '32', '--precision', 'bf16', '--num-chips', '32', '-mf', '8',
 #                  '--log-level', 'ERROR', '--opt-level', '4', '--hf-cache', inference_config.hf_cache,
-#                  '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9', '--load', 'flash_decode_60l_v0_instruct.tti',
+#                  '-odlmh', '-plmh', '-fv', '--flash-decode', '--top-k', '5', '--top-p', '0.9', '--load', inference_config.tti_cache + '/flash_decode_60l_v0_instruct.tti',
 #                  '--load-pretrained', '--model', 'tiiuae/falcon-40b-instruct',
 #                  ]
 
