@@ -1,0 +1,7 @@
+torch==1.10.0
+transformers==4.33.2
+pyjwt==2.7.0
+flask
+requests
+reprint
+einops
