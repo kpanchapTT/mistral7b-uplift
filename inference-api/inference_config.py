@@ -5,6 +5,8 @@ InferenceConfig = namedtuple(
     "InferenceConfig",
     [
         "hf_cache",
+        "tvm_cache",
+        "tti_cache",
         "number_layers",
         "max_input_qsize",
         "input_timeout",
@@ -15,7 +17,9 @@ InferenceConfig = namedtuple(
 )
 
 inference_config = InferenceConfig(
-    hf_cache="/proj_sw/large-model-cache/falcon40b",
+    hf_cache=f"/mnt/{os.environ['MODEL_WEKA_DIR']}/hf_cache",
+    tvm_cache=f"/mnt/{os.environ['MODEL_WEKA_DIR']}/tvm_cache",
+    tti_cache=f"/mnt/{os.environ['MODEL_WEKA_DIR']}/tti_cache",
     number_layers=1,
     max_input_qsize=64,
     input_timeout=30,  # input q backpressure, timeout in seconds
