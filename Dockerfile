@@ -39,9 +39,11 @@ RUN pip3 install ${TVM_WHEEL} --default-timeout=120
 #############################################
 # project-falcon specific
 #############################################
+RUN apt-get update && apt-get install libyaml-cpp0.6
+
 ARG APP_DIR=/falcon40b-demo
 WORKDIR "${APP_DIR}"
-COPY "inference-api" "${APP_DIR}"
+COPY "inference-api" "${APP_DIR}/inference-api"
 COPY "requirements_minimal.txt" "${APP_DIR}"
 COPY "run_inference_api.sh" "${APP_DIR}"
 
