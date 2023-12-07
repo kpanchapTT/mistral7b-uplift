@@ -33,14 +33,19 @@ COPY  ${TVM_WHEEL} .
 #############################################
 ## Install PyBuda and TVM
 #############################################
-RUN pip3 install ${PYBUDA_WHEEL}
-RUN pip3 install ${TVM_WHEEL}
+RUN pip3 install ${PYBUDA_WHEEL} --default-timeout=120
+RUN pip3 install ${TVM_WHEEL} --default-timeout=120
+# RUN python3 -m venv env && \
+#     . env/bin/activate && \
+#     pip3 install ${PYBUDA_WHEEL} ${TVM_WHEEL}
 
 #############################################
 # project-falcon specific
 #############################################
-COPY "inference-api" .
-COPY "requirements_minimal.txt" .
+ARG APP_DIR=/falcon40b-demo
+WORKDIR "$APP_DIR"
+COPY "inference-api" "$APP_DIR"
+COPY "requirements_minimal.txt" "$APP_DIR"
 
-RUN pip3 install requirements_minimal.txt
+RUN pip3 install -r "requirements_minimal.txt"
 
