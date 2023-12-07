@@ -35,17 +35,16 @@ COPY  ${TVM_WHEEL} .
 #############################################
 RUN pip3 install ${PYBUDA_WHEEL} --default-timeout=120
 RUN pip3 install ${TVM_WHEEL} --default-timeout=120
-# RUN python3 -m venv env && \
-#     . env/bin/activate && \
-#     pip3 install ${PYBUDA_WHEEL} ${TVM_WHEEL}
 
 #############################################
 # project-falcon specific
 #############################################
 ARG APP_DIR=/falcon40b-demo
-WORKDIR "$APP_DIR"
-COPY "inference-api" "$APP_DIR"
-COPY "requirements_minimal.txt" "$APP_DIR"
+WORKDIR "${APP_DIR}"
+COPY "inference-api" "${APP_DIR}"
+COPY "requirements_minimal.txt" "${APP_DIR}"
+COPY "run_inference_api.sh" "${APP_DIR}"
 
 RUN pip3 install -r "requirements_minimal.txt"
 
+CMD ["bash", "run_inference_api.sh"]
