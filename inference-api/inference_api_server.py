@@ -7,6 +7,7 @@ import time
 import uuid
 from threading import Lock
 import random
+import shutil
 
 from flask import Flask, Response, jsonify, request, session
 
@@ -50,6 +51,7 @@ def get_falcon40b_backend_overrides(
         log_level = "DEBUG"
     # 2 layer model is used for debugging and testing
     if use_2_layers and save_tti:
+        copy_tvm_cache_to_cwd()
         override_args = [
             "--mode",
             "concurrent",
@@ -136,6 +138,7 @@ def get_falcon40b_backend_overrides(
             "tiiuae/falcon-40b-instruct",
         ]
     elif use_60_layers and save_tti:
+        copy_tvm_cache_to_cwd()
         override_args = [
             "--mode",
             "sequential",
@@ -164,8 +167,6 @@ def get_falcon40b_backend_overrides(
             "--hf-cache",
             inference_config.hf_cache,
             "--enable-tvm-cache",
-            inference_config.tvm_cache
-            + "/_colmans_tvm_falcon_odlmhpfv_flash_32c_8mf_0af_60l_2048s_"
             "-odlmh",
             "-plmh",
             "-fv",
@@ -299,6 +300,20 @@ def get_backend_override_args():
     )
     print(override_args)
     return override_args
+
+
+def copy_tvm_cache_to_cwd():
+    # backend tvm cache is assumed to be in the calling cwd
+    current_dir = os.getcwd()
+    if os.path.isdir(inference_config.tvm_cache):
+        files = os.listdir(inference_config.tvm_cache)
+        # Iterate over the files
+        for file_name in files:
+            src_file = os.path.join(inference_config.tvm_cache, file_name)
+            if os.path.isfile(src_file) and file_name.startswith("tvm"):
+                # Copy the file to the current working directory
+                dest_file = os.path.join(os.getcwd(), file_name)
+                shutil.copy(src_file, dest_file)
 
 
 verbose = False

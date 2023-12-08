@@ -58,8 +58,9 @@ RUN chown -R user:user "${HOME_DIR}"
 RUN chown -R user:user "/usr/local/lib/python3.8/dist-packages/budabackend"
 
 COPY "inference-api" "${HOME_DIR}/${APP_DIR}/inference-api"
-COPY "requirements_minimal.txt" "${HOME_DIR}/${APP_DIR}"
-COPY "run_inference_api.sh" "${HOME_DIR}/${APP_DIR}"
+COPY "requirements_minimal.txt" "${HOME_DIR}/${APP_DIR}/"
+COPY "run_inference_api.sh" "${HOME_DIR}/${APP_DIR}/"
+COPY "tt-smi-wh-8.C.0.0_2023-11-02-ddcfb4b7bb67635e" "${HOME_DIR}/"
 
 RUN pip3 install -r "requirements_minimal.txt"
 
