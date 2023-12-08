@@ -116,7 +116,7 @@ def get_falcon40b_backend_overrides(
             "-mf",
             "8",
             "--log-level",
-            "ERROR",
+            log_level,
             "--opt-level",
             "4",
             "--hf-cache",
