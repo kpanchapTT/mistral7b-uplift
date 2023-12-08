@@ -7,7 +7,6 @@ InferenceConfig = namedtuple(
         "hf_cache",
         "tvm_cache",
         "tti_cache",
-        "number_layers",
         "max_input_qsize",
         "input_timeout",
         "max_inactive_seconds",
@@ -20,7 +19,6 @@ inference_config = InferenceConfig(
     hf_cache=f"{os.environ['MODEL_WEKA_DIR']}/hf_cache",
     tvm_cache=f"{os.environ['MODEL_WEKA_DIR']}/tvm_cache",
     tti_cache=f"{os.environ['MODEL_WEKA_DIR']}/tti_cache",
-    number_layers=1,
     max_input_qsize=64,
     input_timeout=30,  # input q backpressure, timeout in seconds
     max_inactive_seconds=60.0,  # maximum time between decode reads to be active
