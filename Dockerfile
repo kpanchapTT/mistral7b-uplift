@@ -63,11 +63,12 @@ RUN chown -R user:user "${HOME_DIR}"
 RUN chown -R user:user "/usr/local/lib/python3.8/dist-packages/budabackend"
 
 # debug tools
-RUN apt-get update && apt-get install vim tmux curl htop zip unzip
+RUN apt-get update && apt-get install -y vim tmux curl htop zip unzip
 COPY "tt-smi-wh-8.C.0.0_2023-11-02-ddcfb4b7bb67635e" "${HOME_DIR}/"
 COPY "soft_harvest_2023-09-14-3d569476654ec0cd" "${HOME_DIR}/"
 
-RUN chmod +x "${HOME_DIR}/tt-smi-wh-8.C.0.0_2023-11-02-ddcfb4b7bb67635e" "${HOME_DIR}/soft_harvest_2023-09-14-3d569476654ec0cd"
+RUN chmod +x "${HOME_DIR}/tt-smi-wh-8.C.0.0_2023-11-02-ddcfb4b7bb67635e"
+RUN chmod +x "${HOME_DIR}/soft_harvest_2023-09-14-3d569476654ec0cd"
 
 RUN pip3 install -r "requirements_minimal.txt"
 
