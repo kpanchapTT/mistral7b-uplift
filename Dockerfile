@@ -39,14 +39,46 @@ RUN pip3 install ${TVM_WHEEL} --default-timeout=120
 #############################################
 # project-falcon specific
 #############################################
-RUN apt-get update && apt-get install libyaml-cpp0.6
+# additonal dependencies:
+# libyaml-cpp0.6: for pybuda
+# rsync: to save .tti
+RUN apt-get update && apt-get install -y libyaml-cpp0.6 rsync
 
 ARG APP_DIR=/falcon40b-demo
-WORKDIR "${APP_DIR}"
-COPY "inference-api" "${APP_DIR}/inference-api"
-COPY "requirements_minimal.txt" "${APP_DIR}"
-COPY "run_inference_api.sh" "${APP_DIR}"
+ARG HOME_DIR=/home/user
+
+## setup user
+RUN useradd -u 1000 -s /bin/bash user
+
+# add user to sudoers
+RUN apt-get install -y sudo \
+    && echo "user ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/user \
+    && chmod 0440 /etc/sudoers.d/user
+
+WORKDIR "${HOME_DIR}/${APP_DIR}"
+
+COPY "inference-api" "${HOME_DIR}/${APP_DIR}/inference-api"
+COPY "requirements_minimal.txt" "${HOME_DIR}/${APP_DIR}/"
+COPY "run_inference_api.sh" "${HOME_DIR}/${APP_DIR}/"
+
+RUN chown -R user:user "${HOME_DIR}"
+# BBE writes files here
+RUN chown -R user:user "/usr/local/lib/python3.8/dist-packages/budabackend"
+
+# debug tools
+RUN apt-get update && apt-get install -y vim tmux curl htop zip unzip
+COPY "tt-smi-wh-8.C.0.0_2023-11-02-ddcfb4b7bb67635e" "${HOME_DIR}/"
+COPY "soft_harvest_2023-09-14-3d569476654ec0cd" "${HOME_DIR}/"
+
+RUN chmod +x "${HOME_DIR}/tt-smi-wh-8.C.0.0_2023-11-02-ddcfb4b7bb67635e"
+RUN chmod +x "${HOME_DIR}/soft_harvest_2023-09-14-3d569476654ec0cd"
 
 RUN pip3 install -r "requirements_minimal.txt"
 
-CMD ["bash", "run_inference_api.sh"]
+# cleanup
+RUN rm -rf /var/lib/apt/lists/* \
+    && rm -rf /tmp/install
+
+USER user
+# CMD ["bash", "run_inference_api.sh"]
+ENTRYPOINT sleep infinity

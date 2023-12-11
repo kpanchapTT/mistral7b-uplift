@@ -3,5 +3,5 @@ transformers==4.33.2
 pyjwt==2.7.0
 flask
 requests
-reprint
+reprint==0.6.0
 einops

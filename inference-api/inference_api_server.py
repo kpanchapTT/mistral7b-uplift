@@ -7,6 +7,7 @@ import time
 import uuid
 from threading import Lock
 import random
+import shutil
 
 from flask import Flask, Response, jsonify, request, session
 
@@ -40,12 +41,17 @@ context = Context()
 def get_falcon40b_backend_overrides(
     use_60_layers=True,
     use_2_layers=False,
-    pytorch_no_weights=True,
+    pytorch_no_weights=False,
     save_tti=False,
-    load_tti=True,
+    load_tti=False,
+    log_level_debug=False,
 ):
+    log_level = "ERROR"
+    if log_level_debug:
+        log_level = "DEBUG"
     # 2 layer model is used for debugging and testing
     if use_2_layers and save_tti:
+        copy_tvm_cache_to_cwd()
         override_args = [
             "--mode",
             "concurrent",
@@ -87,7 +93,7 @@ def get_falcon40b_backend_overrides(
             "--model",
             "tiiuae/falcon-40b-instruct",
         ]
-    elif use_2_layers and load_tti:
+    elif use_2_layers and not save_tti:
         override_args = [
             "--mode",
             "concurrent",
@@ -100,9 +106,9 @@ def get_falcon40b_backend_overrides(
             "--arch",
             "nebula-galaxy",
             "--num-tokens",
-            "1_000_000_000",
+            "20",
             "--num-outer-loops",
-            "100_000",
+            "1",  # default value
             "--user-rows",
             "32",
             "--precision",
@@ -112,7 +118,7 @@ def get_falcon40b_backend_overrides(
             "-mf",
             "8",
             "--log-level",
-            "ERROR",
+            log_level,
             "--opt-level",
             "4",
             "--hf-cache",
@@ -125,13 +131,17 @@ def get_falcon40b_backend_overrides(
             "5",
             "--top-p",
             "0.9",
-            "--load",
-            inference_config.tti_cache + "/flash_decode_2l_v0_test.tti",
             "--load-pretrained",
             "--model",
             "tiiuae/falcon-40b-instruct",
         ]
+        if load_tti:
+            override_args += [
+                "--load",
+                inference_config.tti_cache + "/flash_decode_2l_v0_test.tti",
+            ]
     elif use_60_layers and save_tti:
+        copy_tvm_cache_to_cwd()
         override_args = [
             "--mode",
             "sequential",
@@ -154,14 +164,12 @@ def get_falcon40b_backend_overrides(
             "-mf",
             "8",
             "--log-level",
-            "DEBUG",
+            log_level,
             "--opt-level",
             "4",
             "--hf-cache",
             inference_config.hf_cache,
             "--enable-tvm-cache",
-            inference_config.tvm_cache
-            + "/_colmans_tvm_falcon_odlmhpfv_flash_32c_8mf_0af_60l_2048s_"
             "-odlmh",
             "-plmh",
             "-fv",
@@ -176,7 +184,7 @@ def get_falcon40b_backend_overrides(
             "--model",
             "tiiuae/falcon-40b-instruct",
         ]
-    elif use_60_layers and load_tti:
+    elif use_60_layers and not save_tti:
         override_args = [
             "--mode",
             "concurrent",
@@ -201,7 +209,7 @@ def get_falcon40b_backend_overrides(
             "-mf",
             "8",
             "--log-level",
-            "ERROR",
+            log_level,
             "--opt-level",
             "4",
             "--hf-cache",
@@ -214,12 +222,15 @@ def get_falcon40b_backend_overrides(
             "5",
             "--top-p",
             "0.9",
-            "--load",
-            inference_config.tti_cache + "/flash_decode_60l_v0_instruct.tti",
             "--load-pretrained",
             "--model",
             "tiiuae/falcon-40b-instruct",
         ]
+        if load_tti:
+            override_args += [
+                "--load",
+                inference_config.tti_cache + "/flash_decode_60l_v0_instruct.tti",
+            ]
     elif pytorch_no_weights:
         # 1L pytorch no weights for debug and testing
         override_args = [
@@ -244,7 +255,7 @@ def get_falcon40b_backend_overrides(
             "-mf",
             "8",
             "--log-level",
-            "ERROR",
+            "DEBUG",
             "--opt-level",
             "4",
             "--hf-cache",
@@ -272,13 +283,14 @@ def get_backend_override_args():
     use_2_layers = os.environ.get("FALCON_40B_2LAYER") == "1"
     pytorch_no_weights = os.environ.get("FALCON_40B_PYTORCH_NO_WEIGHTS") == "1"
     save_tti = os.environ.get("FALCON_40B_SAVE") == "1"
+    load_tti = os.environ.get("FALCON_40B_LOAD") == "1"
+    log_level_debug = os.environ.get("FALCON_40B_LOG_LEVEL_DEBUG") == "1"
     use_60_layers = not use_2_layers and not pytorch_no_weights
-    load_tti = not save_tti
     assert not (
         pytorch_no_weights and save_tti
     ), "cannot save_tti with pytorch_no_weights."
     print(
-        f"getting overrides for: use_60_layers={use_60_layers}, use_2_layers={use_2_layers}, pytorch_no_weights={pytorch_no_weights}, save_tti={save_tti}, load_tti={load_tti}"
+        f"getting overrides for: use_60_layers={use_60_layers}, use_2_layers={use_2_layers}, pytorch_no_weights={pytorch_no_weights}, save_tti={save_tti}, load_tti={load_tti}, log_level_debug={log_level_debug}"
     )
     if pytorch_no_weights or use_2_layers:
         print(
@@ -290,9 +302,24 @@ def get_backend_override_args():
         pytorch_no_weights=pytorch_no_weights,
         save_tti=save_tti,
         load_tti=load_tti,
+        log_level_debug=log_level_debug,
     )
     print(override_args)
     return override_args
+
+
+def copy_tvm_cache_to_cwd():
+    # backend tvm cache is assumed to be in the calling cwd
+    current_dir = os.getcwd()
+    if os.path.isdir(inference_config.tvm_cache):
+        files = os.listdir(inference_config.tvm_cache)
+        # Iterate over the files
+        for file_name in files:
+            src_file = os.path.join(inference_config.tvm_cache, file_name)
+            if os.path.isfile(src_file) and file_name.startswith("tvm"):
+                # Copy the file to the current working directory
+                dest_file = os.path.join(os.getcwd(), file_name)
+                shutil.copy(src_file, dest_file)
 
 
 verbose = False
