@@ -214,6 +214,7 @@ def get_falcon40b_backend_overrides(
             "4",
             "--hf-cache",
             inference_config.hf_cache,
+            "--enable-tvm-cache",
             "-odlmh",
             "-plmh",
             "-fv",
