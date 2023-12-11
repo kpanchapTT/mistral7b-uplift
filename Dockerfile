@@ -39,7 +39,10 @@ RUN pip3 install ${TVM_WHEEL} --default-timeout=120
 #############################################
 # project-falcon specific
 #############################################
-RUN apt-get update && apt-get install libyaml-cpp0.6
+# additonal dependencies:
+# libyaml-cpp0.6: for pybuda
+# rsync: to save .tti
+RUN apt-get update && apt-get install -y libyaml-cpp0.6 rsync
 
 ARG APP_DIR=/falcon40b-demo
 ARG HOME_DIR=/home/user
