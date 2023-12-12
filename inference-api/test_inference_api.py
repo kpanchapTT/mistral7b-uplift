@@ -12,8 +12,10 @@ def test_api_call(prompt_extra="", print_output=True):
     # export LLM_CHAT_API_URL="${DEPLOY_URL}/predictions/falcon40b/"
 
     # API_URL = os.environ["LLM_CHAT_API_URL"]
-    API_URL = f"http://127.0.0.1:{inference_config.reverse_proxy_port}/predictions/falcon40b"
-    # API_URL = (f"http://127.0.0.1:{inference_config.backend_server_port}/predictions/falcon40b")
+    # API_URL = f"http://127.0.0.1:{inference_config.reverse_proxy_port}/predictions/falcon40b"
+    API_URL = (
+        f"http://127.0.0.1:{inference_config.backend_server_port}/predictions/falcon40b"
+    )
 
     headers = {"Authorization": os.environ.get("AUTHORIZATION")}
 
@@ -23,8 +25,8 @@ def test_api_call(prompt_extra="", print_output=True):
         "temperature": 1,
         "top_k": 40,
         "top_p": 0.9,
-        "max_tokens": 1,
-        "stop_sequence": ".",
+        "max_tokens": 10,
+        "stop_sequence": ":",
     }
     # using requests stream=True, make sure to set a timeout
     response = requests.post(

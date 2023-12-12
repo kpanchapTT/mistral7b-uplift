@@ -448,6 +448,8 @@ def get_user_parameters(data):
 
 def sanitize_request(request):
     error = None
+    user_session_id = None
+
     if request.is_json:
         data = request.get_json()
     else:
@@ -466,9 +468,10 @@ def sanitize_request(request):
     if error:
         return None, None, None, error
 
-    user_session_id, error = safe_convert_type(data, "session_id", str, None)
-    if error:
-        return None, None, None, error
+    if "session_id" in data:
+        user_session_id, error = safe_convert_type(data, "session_id", str, None)
+        if error:
+            return None, None, None, error
 
     return prompt, params, user_session_id, error
 
@@ -517,10 +520,13 @@ def inference():
         return error
 
     # create a session_id if not supplied
-    if "session_id" not in session and not user_session_id:
+    if "session_id" not in session and user_session_id is None:
         session["session_id"] = str(uuid.uuid4())
     else:
         print(f"PRE-EXISTING SESSION: {session.get('session_id')}, {user_session_id}")
+        # TODO: add user_session_id as session_id if passed correctly
+        # currently only support stateless sessions
+        session["session_id"] = str(uuid.uuid4())
 
     # if input_q full, retry with simple back-off
     for timeout in [1, 1, 1, 1, 1, 5, 5, 5, 10]:

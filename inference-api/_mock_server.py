@@ -24,12 +24,15 @@ def mock_decoder(self):
     output_tokens = self.input_ids[-1].unsqueeze(0)
     # if user has hit max_length, send eos token
     for idx, user in enumerate(self.users):
-        if (
-            user is not None
-            and (user.position_id - user.prompt_length + 1)
-            >= user.generation_params["max_tokens"]
-        ):
-            output_tokens[0, idx] = self.tokenizer.eos_token_id
+        if user is not None:
+            if (user.position_id - user.prompt_length + 1) >= user.max_tokens:
+                output_tokens[0, idx] = self.tokenizer.eos_token_id
+            elif (
+                (user.stop_sequence is not None)
+                and (user.position_id - user.prompt_length + 1) > 0
+                and (output_tokens[0, idx] == user.stop_sequence)
+            ):
+                output_tokens[0, idx] = self.tokenizer.eos_token_id
     # update the new tokens generated to the input id
     self.input_ids = output_tokens.view(1, self.max_users)
 
