@@ -341,9 +341,8 @@ def initialize_decode_backend(override_args):
         args=(input_queue, output_queue, status_queue, override_args, verbose),
     )
     p.start()
-    input_queue.put(
-        (INIT_ID, "Dummy input for initialization", get_user_parameters({}))
-    )
+    default_params, _ = get_user_parameters({})
+    input_queue.put((INIT_ID, "Dummy input for initialization", default_params))
     respond_to_users_thread = threading.Thread(target=respond_to_users)
     respond_to_users_thread.start()
     poll_status_thread = threading.Thread(target=poll_status)
@@ -399,33 +398,79 @@ def poll_status():
         print("prompt_q_size: ", prompt_q_size)
 
 
-def validate_request(request):
+def preprocess_prompt(data):
+    user_text, error = safe_convert_type(
+        data_dict=data, key="text", dest_type=str, default=""
+    )
+    preprocessed_prompt = f"User: {user_text}\nAI:"
+    return preprocessed_prompt, error
+
+
+def safe_convert_type(data_dict, key, dest_type, default):
+    error = None
+    value = data_dict.get(key, default)
+    converted_value = None
+    try:
+        converted_value = dest_type(value)
+    # pylint: disable=broad-except
+    except Exception as err:
+        print(f"Error: safe_convert excepts: {err}")
+        status_phrase = f"Parameter: {key} is type={type(value)}, expected {dest_type}"
+        status_code = 400
+        error = (status_phrase, status_code)
+        converted_value = default
+    return converted_value, error
+
+
+def get_user_parameters(data):
+    # (default_value, python_type)
+    default_params = {
+        "temperature": (1.0, float),
+        "top_p": (0.9, float),
+        "top_k": (10, int),
+        "max_tokens": (128, int),
+        "stop_sequence": (None, str),
+    }
+    error = None
+    params = {}
+    # user input sanitization to expected python types, or default values, with error handling
+    for key, (default_value, python_type) in default_params.items():
+        value, error = safe_convert_type(
+            data_dict=data, key=key, dest_type=python_type, default=default_value
+        )
+        if error is not None:
+            # return 400 to user on first error
+            return {}, error
+        params[key] = value
+
+    return params, error
+
+
+def sanitize_request(request):
     error = None
     if request.is_json:
         data = request.get_json()
     else:
         error = "Request was not JSON", 400
-        return None, error
+        return None, None, None, error
 
-    if not data.get("text"):
-        error = "required 'text' parameter is either empty or not given", 400
-    return data, error
+    prompt, error = preprocess_prompt(data)
+    if error:
+        return None, None, None, error
 
+    if not prompt:
+        error = "required 'text' parameter is either empty or not provided", 400
+        return None, None, None, error
 
-def get_user_parameters(data):
-    default_temperature = 1.0
-    default_top_p = 0.9
-    default_top_k = 10
-    default_max_tokens = 128
-    default_stop_sequence = None  # EOS
-    params = {
-        "temperature": data.get("temperature", default_temperature),
-        "top_p": data.get("top_p", default_top_p),
-        "top_k": data.get("top_k", default_top_k),
-        "max_tokens": data.get("max_tokens", default_max_tokens),
-        "stop_sequence": data.get("stop_sequence", default_stop_sequence),
-    }
-    return params
+    params, error = get_user_parameters(data)
+    if error:
+        return None, None, None, error
+
+    user_session_id, error = safe_convert_type(data, "session_id", str, None)
+    if error:
+        return None, None, None, error
+
+    return prompt, params, user_session_id, error
 
 
 def get_output(session_id):
@@ -466,15 +511,16 @@ def get_output(session_id):
 @app.route("/predictions/falcon40b", methods=["POST"])
 def inference():
     start_time = time.time()
-    data, error = validate_request(request)
+    # user will get 400 on invalid input, with helpful status message
+    prompt, params, user_session_id, error = sanitize_request(request)
     if error:
         return error
 
     # create a session_id if not supplied
-    if "session_id" not in session and "session_id" not in data:
+    if "session_id" not in session and not user_session_id:
         session["session_id"] = str(uuid.uuid4())
     else:
-        print(f"PREVIOUS EXISTING SESSION: {session['session_id']}")
+        print(f"PRE-EXISTING SESSION: {session.get('session_id')}, {user_session_id}")
 
     # if input_q full, retry with simple back-off
     for timeout in [1, 1, 1, 1, 1, 5, 5, 5, 10]:
@@ -490,22 +536,14 @@ def inference():
 
     # input
     session_id = session.get("session_id")
-    user_message = data["text"]
-    user_message = _preprocess_prompt(user_message)
-    params = get_user_parameters(data)
-    input_queue.put((session_id, user_message, params))
+    input_queue.put((session_id, prompt, params))
 
     # Log user's prompt
     with open(f"server_logs/prompt_{session_id}.txt", "a") as f:
-        f.write("Prompt:\n" + user_message + "\n")
+        f.write("Prompt:\n" + prompt + "\n")
 
     # output
     return Response(get_output(session_id), content_type="text/event-stream")
-
-
-def _preprocess_prompt(prompt):
-    preprocessed_prompt = f"User: {prompt}\nAI:"
-    return preprocessed_prompt
 
 
 if __name__ == "__main__":

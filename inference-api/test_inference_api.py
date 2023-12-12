@@ -13,9 +13,9 @@ def test_api_call(prompt_extra="", print_output=True):
 
     # API_URL = os.environ["LLM_CHAT_API_URL"]
     API_URL = f"http://127.0.0.1:{inference_config.reverse_proxy_port}/predictions/falcon40b"
-    # API_URL = f"http://127.0.0.1:{inference_config.backend_server_port}/predictions/falcon40b"
+    # API_URL = (f"http://127.0.0.1:{inference_config.backend_server_port}/predictions/falcon40b")
 
-    headers = {"Authorization": os.environ.get('AUTHORIZATION')}
+    headers = {"Authorization": os.environ.get("AUTHORIZATION")}
 
     # set API prompt and optional parameters
     json_data = {
@@ -59,4 +59,4 @@ def test_api_call_threaded():
 
 if __name__ == "__main__":
     test_api_call()
-    test_api_call_threaded()
+    # test_api_call_threaded()

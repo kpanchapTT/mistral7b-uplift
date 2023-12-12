@@ -25,7 +25,8 @@ python3 -m pip install -r requirements.txt
 python3 -m pip install -r requirements_dev.txt
 
 # will be different on other machines
-export HF_CACHE="/proj_sw/large-model-cache/falcon40b"
+export MODEL_WEKA_DIR=/proj_sw/large-model-cache/falcon40b
+# export HF_CACHE="/proj_sw/large-model-cache/falcon40b/hf_cache"
 ```
 
 ## Inference API server
@@ -70,6 +71,7 @@ python inference-api/test_inference_api.py
 For testing of just the flask server a mock_backend is available:
 ```bash
 source env/bin/activate
+export MODEL_WEKA_DIR=/proj_sw/large-model-cache/falcon40b
 python inference-api/_mock_server_.py
 # run in separate terminals or processes
 python inference-api/test_inference_api.py
@@ -108,6 +110,7 @@ For testing the following environment variables can be used to switch the backen
 ```bash
 -e FALCON_40B_2LAYER='1' 
 -e FALCON_40B_SAVE='1'
+-e FALCON_40B_LOAD='1'
 -e FALCON_40B_PYTORCH_NO_WEIGHTS='1' 
 ```
 

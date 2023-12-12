@@ -3,7 +3,11 @@ from time import sleep
 from unittest.mock import Mock, patch
 
 from decode_backend_v1 import DecodeBackend
-from inference_api_server import app, initialize_decode_backend
+from inference_api_server import (
+    app,
+    initialize_decode_backend,
+    get_backend_override_args,
+)
 from inference_config import inference_config
 
 """
@@ -52,8 +56,14 @@ def mock_post_init_pybudify(self, args):
 def test_server():
     if not os.path.exists("server_logs"):
         os.makedirs("server_logs")
-    initialize_decode_backend()
-    app.run(debug=True, port=inference_config.backend_server_port, host="0.0.0.0", use_reloader=False)
+    override_args = get_backend_override_args()
+    initialize_decode_backend(override_args)
+    app.run(
+        debug=True,
+        port=inference_config.backend_server_port,
+        host="0.0.0.0",
+        use_reloader=False,
+    )
 
 
 if __name__ == "__main__":
