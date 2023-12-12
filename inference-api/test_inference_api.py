@@ -15,7 +15,7 @@ def test_api_call(prompt_extra="", print_output=True):
     API_URL = f"http://127.0.0.1:{inference_config.reverse_proxy_port}/predictions/falcon40b"
     # API_URL = f"http://127.0.0.1:{inference_config.backend_server_port}/predictions/falcon40b"
 
-    headers = {"Authorization": os.environ.get('AUTHORIZATION')}
+    headers = {"Authorization": os.environ.get("AUTHORIZATION")}
 
     # set API prompt and optional parameters
     json_data = {
@@ -24,7 +24,7 @@ def test_api_call(prompt_extra="", print_output=True):
         "top_k": 40,
         "top_p": 0.9,
         "max_tokens": 1,
-        "stop_sequence": ".",
+        "stop_sequence": 5,
     }
     # using requests stream=True, make sure to set a timeout
     response = requests.post(

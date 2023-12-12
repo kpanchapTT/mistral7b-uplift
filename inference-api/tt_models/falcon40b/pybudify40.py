@@ -209,6 +209,9 @@ class PyBudify(torch.nn.Module):
                     microbatch_count=self.micro_batch_size,
                 )
                 print(f"Saved image to {self.tti_save}")
+                self.pybuda.config._clear_global_compiler_config()
+                self.pybuda.pybuda_reset()
+                self.pybuda.shutdown()
                 sys.exit(0)
             # breakpoint()
             self.pybuda.initialize_pipeline(
