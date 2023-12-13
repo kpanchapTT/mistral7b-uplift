@@ -1,5 +1,6 @@
-from reprint import output
 import os
+
+from reprint import output
 
 
 class MultiLineOutput:
@@ -38,8 +39,8 @@ class MultiLineOutput:
 
 
 def main():
-    import time
     import random
+    import time
 
     print("Here is some normal terminal output.")
 

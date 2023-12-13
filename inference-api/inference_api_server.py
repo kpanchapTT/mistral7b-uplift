@@ -1,13 +1,13 @@
 import multiprocessing
 import os
 import queue
+import random
+import shutil
 import sys
 import threading
 import time
 import uuid
 from threading import Lock
-import random
-import shutil
 
 from flask import Flask, Response, jsonify, request, session
 
@@ -574,6 +574,5 @@ if __name__ == "__main__":
     if not os.path.exists("server_logs"):
         os.makedirs("server_logs")
     override_args = get_backend_override_args()
-    breakpoint()
     initialize_decode_backend(override_args)
     app.run(debug=False, port=inference_config.backend_server_port, host="0.0.0.0")

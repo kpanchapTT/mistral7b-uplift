@@ -1,21 +1,19 @@
+import json
 import os
+import random
 import threading
 import warnings
 from argparse import ArgumentParser
-from queue import Queue
-from time import time
-from time import sleep
 from multiprocessing import Queue
+from queue import Queue
+from time import sleep, time
 
 import torch
-from pybudify40 import PyBudify
-from tt_models.falcon40b.multilineoutput import MultiLineOutput
-from reprint import output as reprint_output
 import torch.nn.functional as F
+from pybudify40 import PyBudify
+from reprint import output as reprint_output
 from transformers.generation.utils import top_k_top_p_filtering
-
-import json
-import random
+from tt_models.falcon40b.multilineoutput import MultiLineOutput
 
 
 def main():
@@ -355,15 +353,14 @@ def load_model_and_tokenizer(args):
         print("Cache folder not found. Reverting to default location")
 
     # Important: HF libraries must be set after changing the os.environ cache directory!
-    from tt_models.falcon40b.configuration_RW import RWConfig
-
-    # from tt_models.falcon40b.debug import RWForCausalLM as RWForCausalLMTTdebug
-    # from tt_models.falcon40b.modelling_RW_torch1 import RWForCausalLM as RWForCausalLMTorch1
-    from tt_models.falcon40b.tt_modeling_RW import RWForCausalLM as RWForCausalLMTT
-
     # from tt_models.falcon40b.tt_modeling_RW_odkv import RWForCausalLM as RWForCausalODKV
     # from tt_models.falcon40b.tt_modeling_RW_odkv_t import RWForCausalLM as RWForCausalODKV_T
     from transformers import AutoModelForCausalLM, AutoTokenizer, logging
+    from tt_models.falcon40b.configuration_RW import RWConfig
+    # from tt_models.falcon40b.debug import RWForCausalLM as RWForCausalLMTTdebug
+    # from tt_models.falcon40b.modelling_RW_torch1 import RWForCausalLM as RWForCausalLMTorch1
+    from tt_models.falcon40b.tt_modeling_RW import \
+        RWForCausalLM as RWForCausalLMTT
 
     logging.set_verbosity_error()
 
@@ -615,7 +612,8 @@ def run_sync_efficient_40b(
 
             past_key_values = tuple(new_past_key_values)
 
-        import cProfile, pstats
+        import cProfile
+        import pstats
 
         pr = cProfile.Profile()
         loop_count = 0
