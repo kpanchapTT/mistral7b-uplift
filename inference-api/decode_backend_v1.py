@@ -7,12 +7,9 @@ from time import sleep, time
 
 import torch
 import torch.nn.functional as F
+from decode_v0 import load_model_and_tokenizer
+from pybudify40 import PyBudify
 from transformers.generation.utils import top_k_top_p_filtering
-
-from tt_models.falcon40b.decode_v0 import (
-    load_model_and_tokenizer,
-)
-from tt_models.falcon40b.pybudify40 import PyBudify
 
 
 class DecodeBackend:

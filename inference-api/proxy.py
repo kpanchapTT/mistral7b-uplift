@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 import argparse
-import os
-from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
-import time
-from socketserver import ThreadingMixIn
+import os
 import sys
+import time
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingMixIn
 from typing import Optional
 
 import jwt
 import requests
-from jwt import InvalidTokenError
-
 from inference_config import inference_config
+from jwt import InvalidTokenError
 
 HTTP_UNAUTHORIZED = 401
 HTTP_INTERNAL_SERVER_ERROR = 500

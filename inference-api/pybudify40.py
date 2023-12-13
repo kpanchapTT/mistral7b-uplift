@@ -4,8 +4,8 @@ import sys
 import time
 
 import torch
-from .DecodeConfig import DecodeConfig
-from .PrefillConfig import PrefillConfig
+from DecodeConfig import DecodeConfig
+from PrefillConfig import PrefillConfig
 
 
 class PyBudify(torch.nn.Module):

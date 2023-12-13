@@ -1,13 +1,13 @@
 import multiprocessing
 import os
 import queue
+import random
+import shutil
 import sys
 import threading
 import time
 import uuid
 from threading import Lock
-import random
-import shutil
 
 from flask import Flask, Response, jsonify, request, session
 
@@ -45,6 +45,7 @@ def get_falcon40b_backend_overrides(
     save_tti=False,
     load_tti=False,
     log_level_debug=False,
+    tti_name="flash_decode_default_test.tti",
 ):
     log_level = "ERROR"
     if log_level_debug:
@@ -88,7 +89,7 @@ def get_falcon40b_backend_overrides(
             "--top-p",
             "0.9",
             "--save",
-            inference_config.tti_cache + "/flash_decode_2l_v0_test.tti",
+            os.path.join(inference_config.tti_cache, tti_name),
             "--load-pretrained",
             "--model",
             "tiiuae/falcon-40b-instruct",
@@ -138,7 +139,7 @@ def get_falcon40b_backend_overrides(
         if load_tti:
             override_args += [
                 "--load",
-                inference_config.tti_cache + "/flash_decode_2l_v0_test.tti",
+                os.path.join(inference_config.tti_cache, tti_name),
             ]
     elif use_60_layers and save_tti:
         copy_tvm_cache_to_cwd()
@@ -179,7 +180,7 @@ def get_falcon40b_backend_overrides(
             "--top-p",
             "0.9",
             "--save",
-            inference_config.tti_cache + "/flash_decode_60l_v0_instruct.tti",
+            os.path.join(inference_config.tti_cache, tti_name),
             "--load-pretrained",
             "--model",
             "tiiuae/falcon-40b-instruct",
@@ -230,7 +231,7 @@ def get_falcon40b_backend_overrides(
         if load_tti:
             override_args += [
                 "--load",
-                inference_config.tti_cache + "/flash_decode_60l_v0_instruct.tti",
+                os.path.join(inference_config.tti_cache, tti_name),
             ]
     elif pytorch_no_weights:
         # 1L pytorch no weights for debug and testing
@@ -286,13 +287,28 @@ def get_backend_override_args():
     save_tti = os.environ.get("FALCON_40B_SAVE") == "1"
     load_tti = os.environ.get("FALCON_40B_LOAD") == "1"
     log_level_debug = os.environ.get("FALCON_40B_LOG_LEVEL_DEBUG") == "1"
+    tti_suffix = os.environ.get("FALCON_40B_TTI_SUFFIX", "v0")
     use_60_layers = not use_2_layers and not pytorch_no_weights
+    tti_name = (
+        f"flash_decode_60l_{tti_suffix}.tti"
+        if use_60_layers
+        else f"flash_decode_2l_{tti_suffix}_test.tti"
+    )
+    tti_path = os.path.join(inference_config.tti_cache, tti_name)
+    print(
+        f"getting overrides for:\n use_60_layers={use_60_layers},\n use_2_layers={use_2_layers},\n pytorch_no_weights={pytorch_no_weights},\n save_tti={save_tti},\n load_tti={load_tti},\n log_level_debug={log_level_debug},\n tti_name={tti_name}\n"
+    )
+    if save_tti:
+        assert not os.path.exists(
+            tti_path
+        ), f"provided tti path exists: {tti_path}, cannot save over existing tti"
+    elif load_tti:
+        assert os.path.exists(
+            tti_path
+        ), f"provided tti path does not exist: {tti_path}, cannot load tti"
     assert not (
         pytorch_no_weights and save_tti
     ), "cannot save_tti with pytorch_no_weights."
-    print(
-        f"getting overrides for: use_60_layers={use_60_layers}, use_2_layers={use_2_layers}, pytorch_no_weights={pytorch_no_weights}, save_tti={save_tti}, load_tti={load_tti}, log_level_debug={log_level_debug}"
-    )
     if pytorch_no_weights or use_2_layers:
         print(
             f"WARNING: pytorch_no_weights={pytorch_no_weights}, use_2_layers={use_2_layers} is run for debug and testing only."
@@ -304,6 +320,7 @@ def get_backend_override_args():
         save_tti=save_tti,
         load_tti=load_tti,
         log_level_debug=log_level_debug,
+        tti_name=tti_name,
     )
     print(override_args)
     return override_args

@@ -3,11 +3,8 @@ from time import sleep
 from unittest.mock import Mock, patch
 
 from decode_backend_v1 import DecodeBackend
-from inference_api_server import (
-    app,
-    initialize_decode_backend,
-    get_backend_override_args,
-)
+from inference_api_server import (app, get_backend_override_args,
+                                  initialize_decode_backend)
 from inference_config import inference_config
 
 """
