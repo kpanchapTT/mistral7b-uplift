@@ -14,11 +14,12 @@ from torch.nn import CrossEntropyLoss, LayerNorm
 from torch.nn import functional as F
 from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
-    CausalLMOutputWithCrossAttentions)
+    CausalLMOutputWithCrossAttentions,
+)
 from transformers.modeling_utils import PreTrainedModel
 from transformers.utils import logging
 
-from .configuration_RW import RWConfig
+from tt_models.falcon40b.configuration_RW import RWConfig
 
 logger = logging.get_logger(__name__)
 
