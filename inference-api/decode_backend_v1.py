@@ -25,6 +25,7 @@ class DecodeBackend:
             self.prompt_length = torch.sum(tokenized.attention_mask).item()  # int
             self.generation_params = params
             self.max_tokens = params["max_tokens"]
+            self.return_prompt = params["return_prompt"]
             self.cancel = False
             self.stop_sequence = None
             if params.get("stop_sequence"):
@@ -433,17 +434,20 @@ class DecodeBackend:
         for i, token in enumerate(self.input_ids[0]):  # bc input_ids is 1x32
             if self.users[i] is None:
                 continue
+            push_tokens = []
+            # optionally respond with prompt as it is prefilled
+            if not self.users[i].return_prompt and self.users[i].position_id < (
+                self.users[i].prompt_length - 1
+            ):
+                continue
+            elif self.users[i].position_id == 0:
+                # return 0th prompt token with 1st prompt token in the first push
+                push_tokens.append(self.users[i].prompt_tokens[0])
 
-            # return 0th prompt token with 1st prompt token in the first push
-            first_token_text = ""
-            if self.users[i].position_id == 0:
-                first_token = self.users[i].prompt_tokens[0]
-                first_token_text = self.tokenizer.decode(
-                    first_token, clean_up_tokenization_spaces=True
-                )
-
-            token_text = self.tokenizer.decode(token, clean_up_tokenization_spaces=True)
-            return_text = first_token_text + token_text
+            push_tokens.append(token)
+            return_text = self.tokenizer.decode(
+                push_tokens, clean_up_tokenization_spaces=True
+            )
             output_q.put((self.users[i].user_id, return_text))
 
             # Log user's output

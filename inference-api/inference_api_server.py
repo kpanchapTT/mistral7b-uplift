@@ -434,7 +434,7 @@ def safe_convert_type(data_dict, key, dest_type, default):
         print(f"Error: safe_convert excepts: {err}")
         status_phrase = f"Parameter: {key} is type={type(value)}, expected {dest_type}"
         status_code = 400
-        error = (status_phrase, status_code)
+        error = ({"message": status_phrase}, status_code)
         converted_value = default
     return converted_value, error
 
@@ -447,6 +447,7 @@ def get_user_parameters(data):
         "top_k": (10, int),
         "max_tokens": (128, int),
         "stop_sequence": (None, str),
+        "return_prompt": (False, bool),
     }
     error = None
     params = {}
@@ -470,7 +471,7 @@ def sanitize_request(request):
     if request.is_json:
         data = request.get_json()
     else:
-        error = "Request was not JSON", 400
+        error = {"message": "Request was not JSON"}, 400
         return None, None, None, error
 
     prompt, error = preprocess_prompt(data)
@@ -478,7 +479,9 @@ def sanitize_request(request):
         return None, None, None, error
 
     if not prompt:
-        error = "required 'text' parameter is either empty or not provided", 400
+        error = {
+            "message": "required 'text' parameter is either empty or not provided"
+        }, 400
         return None, None, None, error
 
     params, error = get_user_parameters(data)
@@ -555,7 +558,7 @@ def inference():
         else:
             break
     else:
-        return "Service busy", 500
+        return {"message": "Service busy"}, 500
 
     # input
     session_id = session.get("session_id")

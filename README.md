@@ -61,6 +61,8 @@ Warning: do not use weak secrets like the example one in anything public facing!
 
 # Run tests
 
+## Run tests - local
+
 ```bash
 source env/bin/activate
 python inference-api/test_decoding.py
@@ -72,9 +74,16 @@ For testing of just the flask server a mock_backend is available:
 ```bash
 source env/bin/activate
 export MODEL_WEKA_DIR=/proj_sw/large-model-cache/falcon40b
-python inference-api/_mock_server_.py
+python inference-api/_mock_inference_api_server.py
 # run in separate terminals or processes
 python inference-api/test_inference_api.py
+python inference-api/test_decode_backend_v1.py
+```
+
+The 1L pytorch version can also be run as a test application:
+```bash
+export FALCON_40B_PYTORCH_NO_WEIGHTS='1'
+python inference-api/inference_api_server.py
 ```
 
 # Docker images
