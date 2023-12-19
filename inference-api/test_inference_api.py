@@ -4,21 +4,16 @@ import threading
 import requests
 from inference_config import inference_config
 
+DEPLOY_URL = "http://127.0.0.1"
+# DEPLOY_URL="https://llm-chat--tenstorrent-playground.workload.tenstorrent.com"
+API_BASE_URL = f"{DEPLOY_URL}:{inference_config.reverse_proxy_port}"
+API_URL = f"{API_BASE_URL}/predictions/falcon40b"
+HEALTH_URL = f"{API_BASE_URL}/get-health"
+
+headers = {"Authorization": os.environ.get("AUTHORIZATION")}
+
 
 def test_api_call(prompt_extra="", print_output=True):
-    # read environment vars
-
-    # export DEPLOY_URL="https://llm-chat--tenstorrent-playground.workload.tenstorrent.com"
-    # export LLM_CHAT_API_URL="${DEPLOY_URL}/predictions/falcon40b/"
-
-    # API_URL = os.environ["LLM_CHAT_API_URL"]
-    API_URL = (
-        f"http://127.0.0.1:{inference_config.reverse_proxy_port}/predictions/falcon40b"
-    )
-    # API_URL = f"http://127.0.0.1:{inference_config.backend_server_port}/predictions/falcon40b"
-
-    headers = {"Authorization": os.environ.get("AUTHORIZATION")}
-
     # set API prompt and optional parameters
     json_data = {
         "text": "Where should I go in Austin when I visit?" + prompt_extra,
@@ -60,6 +55,12 @@ def test_api_call_threaded():
     print("All threads have finished execution.")
 
 
+def test_get_health():
+    response = requests.get(HEALTH_URL, headers=headers, timeout=35)
+    assert reponse
+
+
 if __name__ == "__main__":
+    # test_get_health()
     test_api_call()
     # test_api_call_threaded()

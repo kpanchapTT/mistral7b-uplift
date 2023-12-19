@@ -12,6 +12,8 @@ InferenceConfig = namedtuple(
         "max_inactive_seconds",
         "reverse_proxy_port",
         "backend_server_port",
+        "keepalive_input_period_seconds",
+        "max_seconds_healthy_no_response",
     ],
 )
 
@@ -24,4 +26,6 @@ inference_config = InferenceConfig(
     max_inactive_seconds=60.0,  # maximum time between decode reads to be active
     reverse_proxy_port=1223,
     backend_server_port=7000,
+    keepalive_input_period_seconds=120,
+    max_seconds_healthy_no_response=600,
 )

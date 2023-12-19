@@ -35,7 +35,10 @@ class Context:
         self.conversations_lock = Lock()
 
 
+# Shared variables with a lock for thread-safe access
 context = Context()
+time_last_response = time.time()
+time_last_response_lock = Lock()
 
 
 def get_falcon40b_backend_overrides(
@@ -362,8 +365,8 @@ def initialize_decode_backend(override_args):
     input_queue.put((INIT_ID, "Dummy input for initialization", default_params))
     respond_to_users_thread = threading.Thread(target=respond_to_users)
     respond_to_users_thread.start()
-    poll_status_thread = threading.Thread(target=poll_status)
-    poll_status_thread.start()
+    status_func_thread = threading.Thread(target=status_func)
+    status_func_thread.start()
 
 
 def _reclaim_output_queues():
@@ -389,11 +392,24 @@ def _reclaim_output_queues():
         del output_queue_map[user_id]
 
 
+def _update_time_last_response():
+    # only respond_to_users thread should update this value
+    global time_last_response
+    with time_last_response_lock:
+        time_last_response = time.time()
+
+
+def get_time_last_response():
+    with time_last_response_lock:
+        return time_last_response
+
+
 def respond_to_users():
     MAX_USER_ROWS = 32
-    loop = 0
     while True:
+        # q.get() will block the thread until output received
         response_session_id, response = output_queue.get()
+        _update_time_last_response()
         if response_session_id == INIT_ID:
             continue
         if response_session_id not in output_queue_map:
@@ -402,24 +418,44 @@ def respond_to_users():
         # Log response
         with open(f"server_logs/response_{response_session_id}.txt", "a") as f:
             f.write(response)
-        loop += 1
-        if loop % MAX_USER_ROWS == 0:
-            _reclaim_output_queues()
+        # the outputs must be reclaimed
+        _reclaim_output_queues()
 
 
-def poll_status():
+def status_func():
+    time_last_keep_alive_input = time.time()
     while True:
         time.sleep(1)
-        prompt_q_size, num_decoding_users, decoding_users = status_queue.get()
-        print("num_decoding_users: ", num_decoding_users)
-        print("prompt_q_size: ", prompt_q_size)
+        # attempt to get backend status, skip if it is blocked waiting for input
+        if not status_queue.empty():
+            (
+                prompt_q_size,
+                num_decoding_users,
+                decoding_users,
+            ) = status_queue.get_nowait()
+            print("num_decoding_users: ", num_decoding_users)
+            print("prompt_q_size: ", prompt_q_size)
+        time_since_response = time.time() - get_time_last_response()
+        time_since_keep_live = time.time() - time_last_keep_alive_input
+        if (
+            time_since_response > inference_config.keepalive_input_period_seconds
+            and time_since_keep_live > inference_config.keepalive_input_period_seconds
+        ):
+            session_id = "KEEP-ALIVE-INPUT"
+            prompt = "the"
+            params, _ = get_user_parameters(data={"max_tokens": 0})
+            input_queue.put((session_id, prompt, params))
+            time_last_keep_alive_input = time.time()
+            print(
+                f"keep alive: time_since_response={time_since_response}, time_since_keep_live={time_since_keep_live}"
+            )
 
 
 def preprocess_prompt(data):
     user_text, error = safe_convert_type(
         data_dict=data, key="text", dest_type=str, default=""
     )
-    preprocessed_prompt = f"User: {user_text}\nAI:"
+    preprocessed_prompt = f"User: {user_text}\nAI: "
     return preprocessed_prompt, error
 
 
@@ -506,7 +542,7 @@ def get_output(session_id):
                 context.user_last_read[session_id] = time.time()
         elif session_id not in output_queue_map and not started_generation:
             # waiting for start of generation
-            time.sleep(0.03)
+            time.sleep(0.02)
             continue
         elif session_id not in output_queue_map and started_generation:
             # generation ended without EOS token
@@ -516,11 +552,11 @@ def get_output(session_id):
 
         # use nowait and continue sleep loop to avoid reading from q after slot_idx reallocated
         if output_queue_map[session_id].empty():
-            time.sleep(0.03)
+            time.sleep(0.02)
             continue
 
         out_text = output_queue_map[session_id].get_nowait()
-        if out_text == "<|endoftext|>":
+        if out_text.endswith("<|endoftext|>"):
             done_generation = True
             with context.conversations_lock:
                 del context.user_last_read[session_id]
