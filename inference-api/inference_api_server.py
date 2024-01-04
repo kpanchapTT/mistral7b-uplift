@@ -456,11 +456,10 @@ def status_func():
 
 
 def preprocess_prompt(data):
-    user_text, error = safe_convert_type(
+    prompt, error = safe_convert_type(
         data_dict=data, key="text", dest_type=str, default=""
     )
-    preprocessed_prompt = f"User: {user_text}\nAI: "
-    return preprocessed_prompt, error
+    return prompt, error
 
 
 def safe_convert_type(data_dict, key, dest_type, default):
@@ -540,14 +539,14 @@ def sanitize_request(request):
     if error:
         return None, None, None, error
 
+    params, error = get_user_parameters(data)
+    if error:
+        return None, None, None, error
+
     if not prompt:
         error = {
             "message": "required 'text' parameter is either empty or not provided"
         }, 400
-        return None, None, None, error
-
-    params, error = get_user_parameters(data)
-    if error:
         return None, None, None, error
 
     params, error = apply_parameter_bounds(params)
@@ -598,14 +597,8 @@ def get_output(session_id):
         yield out_text
 
 
-@app.route("/predictions/falcon40b", methods=["POST"])
-def inference():
-    start_time = time.time()
-    # user will get 400 on invalid input, with helpful status message
-    prompt, params, user_session_id, error = sanitize_request(request)
-    if error:
-        return error
-
+def handle_inference(prompt, params, user_session_id):
+    error = None
     # create a session_id if not supplied
     if "session_id" not in session and user_session_id is None:
         session["session_id"] = str(uuid.uuid4())
@@ -625,7 +618,8 @@ def inference():
         else:
             break
     else:
-        return {"message": "Service busy"}, 500
+        error = {"message": "Service busy"}, 500
+        return None, error
 
     # input
     session_id = session.get("session_id")
@@ -636,6 +630,38 @@ def inference():
         with open(f"server_logs/prompt_{session_id}.txt", "a") as f:
             f.write("Prompt:\n" + prompt + "\n")
 
+    return session_id, error
+
+
+def chat_prompt_preprocessing(prompt):
+    preprocessed_prompt = f"User: {prompt}\nAI: "
+    return preprocessed_prompt
+
+
+@app.route("/predictions/falcon40b", methods=["POST"])
+def chat_inference():
+    # user will get 400 on invalid input, with helpful status message
+    prompt, params, user_session_id, error = sanitize_request(request)
+    if error:
+        return error
+    preprocessed_prompt = chat_prompt_preprocessing(prompt)
+    session_id, error = handle_inference(preprocessed_prompt, params, user_session_id)
+    if error:
+        return error
+
+    # output
+    return Response(get_output(session_id), content_type="text/event-stream")
+
+
+@app.route("/inference/falcon40b", methods=["POST"])
+def inference():
+    # user will get 400 on invalid input, with helpful status message
+    prompt, params, user_session_id, error = sanitize_request(request)
+    if error:
+        return error
+    session_id, error = handle_inference(prompt, params, user_session_id)
+    if error:
+        return error
     # output
     return Response(get_output(session_id), content_type="text/event-stream")
 

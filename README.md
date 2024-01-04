@@ -102,17 +102,21 @@ By default Docker containers have access to all of the host's CPU cores and RAM.
 Here is an example mapping the resources to the docker container from a BM host connected to a galaxy, this is a similar configuration to how cloud k8s variables would be set:
 
 ```bash
-docker run --rm -ti \
+sudo docker run --rm -ti \
     --shm-size=4g \
     --device /dev/tenstorrent \
     -p 1223:1223 \
     -v /dev/hugepages-1G:/dev/hugepages-1G \
-    -v /proj_sw/large-model-cache/falcon40b:/mnt/falcon-galaxy-store/hf_cache \
+    -v /proj_sw/large-model-cache/falcon40b/hf_cache:/mnt/falcon-galaxy-store/hf_cache \
     -v /proj_sw/large-model-cache/falcon40b/tvm_cache:/mnt/falcon-galaxy-store/tvm_cache \
-    -v /home/tt-admin/project-falcon/:/mnt/falcon-galaxy-store/tti_cache \
+    -v /proj_sw/large-model-cache/falcon40b/tti_cache:/mnt/falcon-galaxy-store/tti_cache \
     -e MODEL_WEKA_DIR=/mnt/falcon-galaxy-store \
     -e JWT_SECRET=test-secret-456\
-    project-falcon/falcon40b-demo:0.0.0-test bash
+    -e FALCON_40B_LOG_LEVEL_DEBUG='1' \
+    -e FALCON_40B_2LAYER='1' \
+    -e FALCON_40B_TTI_SUFFIX='v2' \
+    -e FALCON_40B_LOAD='1' \
+    ghcr.io/tenstorrent/project-falcon:v0.0.13 bash
 ```
 
 For testing the following environment variables can be used to switch the backend server override arguments:
@@ -246,3 +250,6 @@ curl ${LLM_CHAT_API_URL} -H "Content-Type: application/json" \
 ```bash
 rm -rf .hlkc_cache/ .pkl_memoize_py3/ generated_modules/ tt_build/
 ```
+
+
+
