@@ -13,7 +13,7 @@ HEALTH_URL = f"{API_BASE_URL}/get-health"
 headers = {"Authorization": os.environ.get("AUTHORIZATION")}
 
 
-def test_api_call(prompt_extra="", print_output=True):
+def test_valid_api_call(prompt_extra="", print_output=True):
     # set API prompt and optional parameters
     json_data = {
         "text": "Where should I go in Austin when I visit?" + prompt_extra,
@@ -40,6 +40,70 @@ def test_api_call(prompt_extra="", print_output=True):
         print(response.text)
 
 
+def test_bad_params_types_api_calls(prompt_extra="", print_output=True):
+    # set API prompt and optional parameters
+    json_data_list = [
+        {
+            "text": "Where should I go in Austin when I visit?" + prompt_extra,
+            "temperature": "sdfgnskdgjn",
+        },
+        {
+            "text": "Where should I go in Austin when I visit?" + prompt_extra,
+            "top_k": "ddgsd",
+        },
+        {
+            "text": "Where should I go in Austin when I visit?" + prompt_extra,
+            "top_p": "3333ffaa",
+        },
+        {
+            "text": "Where should I go in Austin when I visit?" + prompt_extra,
+            "max_tokens": "dg2",
+        },
+        {
+            "text": "Where should I go in Austin when I visit?" + prompt_extra,
+            "max_tokens": "gsgsgg",
+        },
+    ]
+    for jd in json_data_list:
+        response = requests.post(
+            API_URL, json=jd, headers=headers, stream=True, timeout=35
+        )
+        print(response.text)
+        assert response.status_code == 400
+
+
+def test_bad_params_bounds_api_calls(prompt_extra="", print_output=True):
+    # set API prompt and optional parameters
+    json_data_list = [
+        {
+            "text": "Where should I go in Austin when I visit?" + prompt_extra,
+            "temperature": "0",
+        },
+        {
+            "text": "Where should I go in Austin when I visit?" + prompt_extra,
+            "top_k": 0,
+        },
+        {
+            "text": "Where should I go in Austin when I visit?" + prompt_extra,
+            "top_p": -1,
+        },
+        {
+            "text": "Where should I go in Austin when I visit?" + prompt_extra,
+            "max_tokens": -1,
+        },
+        {
+            "text": "Where should I go in Austin when I visit?" + prompt_extra,
+            "max_tokens": 9999999,
+        },
+    ]
+    for jd in json_data_list:
+        response = requests.post(
+            API_URL, json=jd, headers=headers, stream=True, timeout=35
+        )
+        print(response.text)
+        assert response.status_code == 400
+
+
 def test_api_call_threaded():
     threads = []
 
@@ -62,5 +126,6 @@ def test_get_health():
 
 if __name__ == "__main__":
     # test_get_health()
-    test_api_call()
-    # test_api_call_threaded()
+    test_valid_api_call()
+    test_bad_params_types_api_calls()
+    test_bad_params_bounds_api_calls()
