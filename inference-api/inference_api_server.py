@@ -20,6 +20,7 @@ app = Flask(__name__)
 app.secret_key = "your_secret_key"
 INIT_ID = "COMPILE-INITIALIZATION"
 
+
 class Context:
     # Store current context
     # Store conversation history
@@ -342,9 +343,6 @@ def copy_tvm_cache_to_cwd():
                 shutil.copy(src_file, dest_file)
 
 
-
-
-
 def initialize_decode_backend(override_args):
     global input_queue
     global output_queue
@@ -357,7 +355,13 @@ def initialize_decode_backend(override_args):
     # run the decode backend in a separate process
     p = multiprocessing.Process(
         target=run_decode_backend,
-        args=(input_queue, output_queue, status_queue, override_args, inference_config.backend_debug_mode),
+        args=(
+            input_queue,
+            output_queue,
+            status_queue,
+            override_args,
+            inference_config.backend_debug_mode,
+        ),
     )
     p.start()
     default_params, _ = get_user_parameters({})
@@ -626,7 +630,7 @@ def inference():
     # input
     session_id = session.get("session_id")
     input_queue.put((session_id, prompt, params))
-    
+
     if inference_config.frontend_debug_mode:
         # Log user's prompt
         with open(f"server_logs/prompt_{session_id}.txt", "a") as f:
@@ -636,10 +640,15 @@ def inference():
     return Response(get_output(session_id), content_type="text/event-stream")
 
 
-if __name__ == "__main__":
+def create_server():
     # Create server log directory
     if not os.path.exists("server_logs"):
         os.makedirs("server_logs")
     override_args = get_backend_override_args()
     initialize_decode_backend(override_args)
+    return app
+
+
+if __name__ == "__main__":
+    app = create_server()
     app.run(debug=False, port=inference_config.backend_server_port, host="0.0.0.0")

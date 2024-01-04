@@ -30,6 +30,6 @@ inference_config = InferenceConfig(
     backend_server_port=7000,
     keepalive_input_period_seconds=120,
     max_seconds_healthy_no_response=600,
-    backend_debug_mode=bool(int(os.environ.get('BACKEND_DEBUG_MODE', 0))),
-    frontend_debug_mode=bool(int(os.environ.get('FRONTEND_DEBUG_MODE', 0))),
+    backend_debug_mode=bool(int(os.environ.get("BACKEND_DEBUG_MODE", 0))),
+    frontend_debug_mode=bool(int(os.environ.get("FRONTEND_DEBUG_MODE", 0))),
 )

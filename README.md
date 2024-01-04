@@ -123,7 +123,7 @@ For testing the following environment variables can be used to switch the backen
 -e FALCON_40B_PYTORCH_NO_WEIGHTS='1' 
 ```
 
-# [WIP] Documentation 
+# Documentation 
 
 `inference_api_server.py` runs the main flask server that is behind the proxy.
 This file starts `decode_backend_v1.run_decode_backend` as a `multiprocessing.Process`
@@ -144,6 +144,102 @@ Each token is pushed onto the output_queue once it is generated. The output_queu
 When decoding is finished for a user within the user_rows it is evicted from the `DecodeBackend.users` list. On the next loop over inputing data from the input_queue this user_row will be filled if there is input prompt data for it.
 
 The flask server request process having received the EOS token marks the connection closed and it's session_id as ready for deletion in the dict of session_id keyed queues.
+
+
+## Deployment
+
+Run WSGI GUnicorn server and Flask application:
+```bash
+gunicorn --config gunicorn.conf.py
+```
+
+in `gunicorn.conf.py` the wsgi_app setting points to 'inference_api_server:create_server()'
+
+
+### Mock server
+
+For rapid development iteration the mock server runs all code normally, but has the following patches:
+```python
+@patch.object(DecodeBackend, "decode", new=mock_decoder)
+@patch.object(DecodeBackend, "_post_init_pybudify", new=mock_post_init_pybudify)
+@patch.object(
+    DecodeBackend, "load_model_and_tokenizer", new=mock_load_model_and_tokenizer
+)
+```
+This removes all calls to the actual model, and instead mock data is given as a response.
+
+Run development mock server
+```bash
+python _mock_inference_api_server.py
+```
+
+Run WSGI GUnicorn mock server
+```bash
+gunicorn --config gunicorn.conf.py '_mock_inference_api_server:create_test_server()'
+```
+
+## API parameters
+
+**text**: [required] prompt text sent to model to generate tokens.<br/>
+
+**temperature**: [optional] <br/>
+
+  0.1 < temperature < 1: amplifies certainty of model in its predictions before top_p sampling.<br/>
+  1 < temperature < 10: reduces certainty of model in its predictions before top_p sampling.<br/>
+
+**max_tokens**: [optional] [1 <= max_tokens <=2048] the maximum number of tokens to generate, fewer tokens may be generated and returned if the `stop_sequence` is reached before `max_tokens` tokens.<br/>
+
+**top_k**: [optional] sampling option for next token selection, sample from most likely k tokens. Minimum value top_k=1 (greedy sampling) to maximum top_k=1000 (little effect).<br/>
+
+**top_p**: [optional] sampling option for next token selection, nucleus sampling from tokens within the the top_p value of cumulative probability. top_p=0.01 (near-greedy sampling) to top_p=1.0 (full multinomial sampling).<br/>
+
+**stop_sequence**: [optional] stop generating tokens on first occurence of given sequence (can be a single character or sequence of characters). Options e.g. "." stop at sentance or default is `eos_token` or `"<|endoftext|>"`.<br/>
+
+### Response parameters
+
+**text**: model response to prompt as raw text sent using HTTP 1.1 chunked uncoding as it is generated from the server backend. The response is truncated given request parameters `max_tokens` and `stop_sequence` as defined above.
+
+##### Error responses parameters
+
+**status_code**: Error status code, e.g. 400.
+
+**message**: Description of error, e.g. Malformed JSON request body.
+
+### example requests
+
+```bash
+curl ${LLM_CHAT_API_URL} -H "Content-Type: application/json" \
+-H "Authorization: ${AUTHORIZATION}" \
+-d '{"text":"Have you been to Paris, France?"}'
+
+# {"answer":"Have you been to Paris, France? Then come to Paris, Michigan!
+# \nParis, Mich., is a community of 7,000 located in northeast Kent County"}
+
+curl ${LLM_CHAT_API_URL} -H "Content-Type: application/json" \
+-H "Authorization: ${AUTHORIZATION}" \
+-d '{"text":"Have you been to Paris, France?",
+  temperature":"1",
+  "top_k":"40",
+  "top_p":"0.9",
+  "max_tokens":"32"
+}'
+
+# {"answer":"Have you been to Paris, France? If you have, or if you\ haven\u2019t,\
+# you are sure to have heard of a lot of interesting things the French"}
+
+curl ${LLM_CHAT_API_URL} -H "Content-Type: application/json" \
+-H "Authorization: ${AUTHORIZATION}" \
+-d '{"text":"Have you been to Paris, France?", 
+  "temperature":"1", 
+  "top_k":"40",
+  "top_p":"0.9",
+  "max_tokens":"32",
+  "stop_sequence": ".",
+}'
+
+# {"answer":"Have you been to Paris, France? Do you know the Eiffel tower? \
+# Did you have the opportunity to visit it?\nI had the opportunity to visit the"}
+```
 
 # clean tt artifacts
 

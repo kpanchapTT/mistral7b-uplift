@@ -3,8 +3,11 @@ from time import sleep
 from unittest.mock import Mock, patch
 
 from decode_backend_v1 import DecodeBackend
-from inference_api_server import (app, get_backend_override_args,
-                                  initialize_decode_backend)
+from inference_api_server import (
+    app,
+    get_backend_override_args,
+    initialize_decode_backend,
+)
 from inference_config import inference_config
 
 """
@@ -56,18 +59,19 @@ def mock_post_init_pybudify(self, args):
 @patch.object(
     DecodeBackend, "load_model_and_tokenizer", new=mock_load_model_and_tokenizer
 )
-def test_server():
+def create_test_server():
     if not os.path.exists("server_logs"):
         os.makedirs("server_logs")
     override_args = get_backend_override_args()
     initialize_decode_backend(override_args)
+    return app
+
+
+if __name__ == "__main__":
+    app = create_test_server()
     app.run(
         debug=True,
         port=inference_config.backend_server_port,
         host="0.0.0.0",
         use_reloader=False,
     )
-
-
-if __name__ == "__main__":
-    test_server()
