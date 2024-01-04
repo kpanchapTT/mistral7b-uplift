@@ -450,7 +450,6 @@ class DecodeBackend:
             )
             output_q.put((self.users[i].user_id, return_text))
 
-
             if self.verbose:
                 # Log user's output
                 with open(f"backend_logs/{self.users[i].user_id}.txt", "a") as f:
