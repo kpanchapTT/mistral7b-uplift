@@ -20,7 +20,6 @@ app = Flask(__name__)
 app.secret_key = "your_secret_key"
 INIT_ID = "COMPILE-INITIALIZATION"
 
-
 class Context:
     # Store current context
     # Store conversation history
@@ -343,7 +342,7 @@ def copy_tvm_cache_to_cwd():
                 shutil.copy(src_file, dest_file)
 
 
-verbose = False
+
 
 
 def initialize_decode_backend(override_args):
@@ -358,7 +357,7 @@ def initialize_decode_backend(override_args):
     # run the decode backend in a separate process
     p = multiprocessing.Process(
         target=run_decode_backend,
-        args=(input_queue, output_queue, status_queue, override_args, verbose),
+        args=(input_queue, output_queue, status_queue, override_args, inference_config.backend_debug_mode),
     )
     p.start()
     default_params, _ = get_user_parameters({})
@@ -415,9 +414,10 @@ def respond_to_users():
         if response_session_id not in output_queue_map:
             output_queue_map[response_session_id] = queue.Queue()
         output_queue_map[response_session_id].put(response)
-        # Log response
-        with open(f"server_logs/response_{response_session_id}.txt", "a") as f:
-            f.write(response)
+        if inference_config.frontend_debug_mode:
+            # Log response
+            with open(f"server_logs/response_{response_session_id}.txt", "a") as f:
+                f.write(response)
         # the outputs must be reclaimed
         _reclaim_output_queues()
 
@@ -471,11 +471,33 @@ def safe_convert_type(data_dict, key, dest_type, default):
         status_phrase = f"Parameter: {key} is type={type(value)}, expected {dest_type}"
         status_code = 400
         error = ({"message": status_phrase}, status_code)
-        converted_value = default
     return converted_value, error
 
 
+def apply_parameter_bounds(params):
+    # clip parameters to within min / max boundaries
+    error = None
+    # (lower_bound, upper_bound)
+    param_bounds = {
+        "temperature": (0.01, 100.0),
+        "top_p": (0.01, 1.0),
+        "top_k": (1, 1000),
+        "max_tokens": (1, 2048),
+    }
+
+    for key, (lower_bound, upper_bound) in param_bounds.items():
+        value = params[key]
+        within_bounds = lower_bound <= value <= upper_bound
+        if not within_bounds:
+            status_phrase = f"Parameter: {key} is outside bounds, {lower_bound} <= {value} <= {upper_bound}."
+            status_code = 400
+            error = ({"message": status_phrase}, status_code)
+            return {}, error
+    return params, error
+
+
 def get_user_parameters(data):
+    """This function turns user input into parameters."""
     # (default_value, python_type)
     default_params = {
         "temperature": (1.0, float),
@@ -524,6 +546,10 @@ def sanitize_request(request):
     if error:
         return None, None, None, error
 
+    params, error = apply_parameter_bounds(params)
+    if error:
+        return None, None, None, error
+
     if "session_id" in data:
         user_session_id, error = safe_convert_type(data, "session_id", str, None)
         if error:
@@ -560,9 +586,10 @@ def get_output(session_id):
             done_generation = True
             with context.conversations_lock:
                 del context.user_last_read[session_id]
-        # Log response
-        with open(f"server_logs/user_{session_id}.txt", "a") as f:
-            f.write(out_text)
+
+        if inference_config.frontend_debug_mode:
+            with open(f"server_logs/user_{session_id}.txt", "a") as f:
+                f.write(out_text)
 
         yield out_text
 
@@ -599,10 +626,11 @@ def inference():
     # input
     session_id = session.get("session_id")
     input_queue.put((session_id, prompt, params))
-
-    # Log user's prompt
-    with open(f"server_logs/prompt_{session_id}.txt", "a") as f:
-        f.write("Prompt:\n" + prompt + "\n")
+    
+    if inference_config.frontend_debug_mode:
+        # Log user's prompt
+        with open(f"server_logs/prompt_{session_id}.txt", "a") as f:
+            f.write("Prompt:\n" + prompt + "\n")
 
     # output
     return Response(get_output(session_id), content_type="text/event-stream")
