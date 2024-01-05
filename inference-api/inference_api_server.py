@@ -7,6 +7,7 @@ import sys
 import threading
 import time
 import uuid
+import json
 from threading import Lock
 
 from flask import Flask, Response, jsonify, request, session
@@ -646,6 +647,34 @@ def handle_inference(prompt, params, user_session_id):
 def chat_prompt_preprocessing(prompt):
     preprocessed_prompt = f"User: {prompt}\nAI: "
     return preprocessed_prompt
+
+
+def get_chat_output(session_id):
+    # the chat interface expects the fullmessage in each call
+    # and the event / data syntax in the response string
+    full_message = ""
+    for chunk in get_output(session_id):
+        # backend handles spacing after words
+        if chunk != "<|endoftext|>":
+            full_message += chunk
+            yield f"event: answer\ndata: {json.dumps({'message': full_message})}\n\n"
+    # after <|endoftext|> no more messages
+    yield 'event: close\ndata: {"message": "Connection closed"}\n\n'
+
+
+@app.route("/chat/falcon40b", methods=["POST"])
+def chat_inference_formatted():
+    # user will get 400 on invalid input, with helpful status message
+    prompt, params, user_session_id, error = sanitize_request(request)
+    if error:
+        return error
+    preprocessed_prompt = chat_prompt_preprocessing(prompt)
+    session_id, error = handle_inference(preprocessed_prompt, params, user_session_id)
+    if error:
+        return error
+
+    # output
+    return Response(get_chat_output(session_id), content_type="text/event-stream")
 
 
 @app.route("/predictions/falcon40b", methods=["POST"])
