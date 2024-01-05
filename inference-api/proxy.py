@@ -16,6 +16,7 @@ from jwt import InvalidTokenError
 HTTP_UNAUTHORIZED = 401
 HTTP_BAD_REQUEST = 400
 HTTP_INTERNAL_SERVER_ERROR = 500
+HTTP_SERVICE_UNAVAILABLE = 503
 
 
 class ProxyHTTPRequestHandler(BaseHTTPRequestHandler):
@@ -94,7 +95,10 @@ class ProxyHTTPRequestHandler(BaseHTTPRequestHandler):
         # pylint: disable=broad-except
         except Exception as exc:
             self.log_error(f"Exception: {exc}")
-            self.send_error(HTTP_INTERNAL_SERVER_ERROR)
+            try:
+                self.send_error(HTTP_INTERNAL_SERVER_ERROR)
+            except BrokenPipeError as bpe:
+                self.log_error(f"BrokenPipeError: {bpe}")
 
     def log_transaction(self, status_code, jwt_payload, stats, duration_ms):
         self.log_message(

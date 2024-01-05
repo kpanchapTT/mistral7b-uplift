@@ -34,6 +34,14 @@ class Context:
         # Initialize the lock
         self.conversations_lock = Lock()
 
+    def get_num_decoding_users(self):
+        with self.conversations_lock:
+            return self.num_decoding_users
+
+    def set_num_decoding_users(self, value):
+        with self.conversations_lock:
+            self.num_decoding_users = value
+
 
 # Shared variables with a lock for thread-safe access
 context = Context()
@@ -427,9 +435,10 @@ def respond_to_users():
 
 
 def status_func():
+    global context
     time_last_keep_alive_input = time.time()
     while True:
-        time.sleep(1)
+        time.sleep(0.2)
         # attempt to get backend status, skip if it is blocked waiting for input
         if not status_queue.empty():
             (
@@ -439,6 +448,7 @@ def status_func():
             ) = status_queue.get_nowait()
             print("num_decoding_users: ", num_decoding_users)
             print("prompt_q_size: ", prompt_q_size)
+            context.set_num_decoding_users(num_decoding_users)
         time_since_response = time.time() - get_time_last_response()
         time_since_keep_live = time.time() - time_last_keep_alive_input
         if (
@@ -492,7 +502,7 @@ def apply_parameter_bounds(params):
         value = params[key]
         within_bounds = lower_bound <= value <= upper_bound
         if not within_bounds:
-            status_phrase = f"Parameter: {key} is outside bounds, {lower_bound} <= {value} <= {upper_bound}."
+            status_phrase = f"Parameter: {key}={value} is outside bounds, {lower_bound} <= {key} <= {upper_bound}."
             status_code = 400
             error = ({"message": status_phrase}, status_code)
             return {}, error
@@ -598,6 +608,7 @@ def get_output(session_id):
 
 
 def handle_inference(prompt, params, user_session_id):
+    global context
     error = None
     # create a session_id if not supplied
     if "session_id" not in session and user_session_id is None:
@@ -609,16 +620,15 @@ def handle_inference(prompt, params, user_session_id):
         session["session_id"] = str(uuid.uuid4())
 
     # if input_q full, retry with simple back-off
-    for timeout in [1, 1, 1, 1, 1, 5, 5, 5, 10]:
+    for timeout in [0.025, 0.05, 0.1, 0.2, 0.4, 0.8, 1.6, 3.2]:
         if input_queue.qsize() >= inference_config.max_input_qsize:
             # add jitter
-            sleep_t = timeout * random.random()
-            print(f"retry: {sleep_t}, session: {session['session_id']} ")
+            sleep_t = timeout + 0.025 * random.random()
             time.sleep(sleep_t)
         else:
             break
     else:
-        error = {"message": "Service busy"}, 500
+        error = {"message": "Service overloaded, try again later."}, 503
         return None, error
 
     # input
@@ -666,12 +676,21 @@ def inference():
     return Response(get_output(session_id), content_type="text/event-stream")
 
 
+backend_initialized = False
+
+
+def global_backend_init():
+    if not backend_initialized:
+        # Create server log directory
+        if not os.path.exists("server_logs"):
+            os.makedirs("server_logs")
+        override_args = get_backend_override_args()
+        initialize_decode_backend(override_args)
+        backend_initialized = True
+
+
 def create_server():
-    # Create server log directory
-    if not os.path.exists("server_logs"):
-        os.makedirs("server_logs")
-    override_args = get_backend_override_args()
-    initialize_decode_backend(override_args)
+    global_backend_init()
     return app
 
 
