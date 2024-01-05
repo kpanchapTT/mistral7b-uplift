@@ -14,7 +14,9 @@ from inference_config import inference_config
 from jwt import InvalidTokenError
 
 HTTP_UNAUTHORIZED = 401
+HTTP_BAD_REQUEST = 400
 HTTP_INTERNAL_SERVER_ERROR = 500
+HTTP_SERVICE_UNAVAILABLE = 503
 
 
 class ProxyHTTPRequestHandler(BaseHTTPRequestHandler):
@@ -61,20 +63,25 @@ class ProxyHTTPRequestHandler(BaseHTTPRequestHandler):
                     close_chunk = "0\r\n\r\n"
                     self.wfile.write(close_chunk.encode(encoding="utf-8"))
                 else:
-                    json_response = json.loads(response.content)
-                    stats = json_response.pop("__stats", None)
-                    response_bytes = bytes(
-                        json.dumps(
-                            json_response,
-                            # Compact JSON by dropping all spaces
-                            separators=(",", ":"),
-                        ),
-                        "utf-8",
-                    )
-                    # set content-length before calling self.send_resp_headers()
-                    response.headers["content-length"] = str(len(response_bytes))
-                    self.send_resp_headers(response)
-                    self.wfile.write(response_bytes)
+                    try:
+                        json_response = json.loads(response.content)
+                        stats = json_response.pop("__stats", None)
+                        response_bytes = bytes(
+                            json.dumps(
+                                json_response,
+                                # Compact JSON by dropping all spaces
+                                separators=(",", ":"),
+                            ),
+                            "utf-8",
+                        )
+                        # set content-length before calling self.send_resp_headers()
+                        response.headers["content-length"] = str(len(response_bytes))
+                        self.send_resp_headers(response)
+                        self.wfile.write(response_bytes)
+                    # pylint: disable=broad-except
+                    except Exception as exc:
+                        self.log_error(f"Exception: {exc}")
+                        self.send_error(HTTP_BAD_REQUEST)
 
                 self.wfile.flush()
                 end_time = time.time()
@@ -88,7 +95,10 @@ class ProxyHTTPRequestHandler(BaseHTTPRequestHandler):
         # pylint: disable=broad-except
         except Exception as exc:
             self.log_error(f"Exception: {exc}")
-            self.send_error(HTTP_INTERNAL_SERVER_ERROR)
+            try:
+                self.send_error(HTTP_INTERNAL_SERVER_ERROR)
+            except BrokenPipeError as bpe:
+                self.log_error(f"BrokenPipeError: {bpe}")
 
     def log_transaction(self, status_code, jwt_payload, stats, duration_ms):
         self.log_message(

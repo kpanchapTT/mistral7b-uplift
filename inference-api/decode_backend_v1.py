@@ -238,7 +238,7 @@ class DecodeBackend:
 
         if self._get_num_of_users() == 0:
             while prompt_q.empty():
-                sleep(0.1)
+                sleep(0.02)
             self._add_users_from_non_empty_queue(prompt_q)
 
         else:
@@ -449,7 +449,6 @@ class DecodeBackend:
                 push_tokens, clean_up_tokenization_spaces=True
             )
             output_q.put((self.users[i].user_id, return_text))
-
 
             if self.verbose:
                 # Log user's output

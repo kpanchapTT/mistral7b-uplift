@@ -8,4 +8,4 @@ echo "starting proxy ..."
 nohup python inference-api/proxy.py > logfile_proxy.log 2>&1 &
 
 echo "starting inference_api_server ..."
-nohup python inference-api/inference_api_server.py > logfile_inference_api_server.log 2>&1 &
+nohup gunicorn --config gunicorn.conf.py > logfile_inference_api_server.log 2>&1 &

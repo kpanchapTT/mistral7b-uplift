@@ -3,8 +3,11 @@ from time import sleep
 from unittest.mock import Mock, patch
 
 from decode_backend_v1 import DecodeBackend
-from inference_api_server import (app, get_backend_override_args,
-                                  initialize_decode_backend)
+from inference_api_server import (
+    app,
+    get_backend_override_args,
+    initialize_decode_backend,
+)
 from inference_config import inference_config
 
 """
@@ -17,7 +20,8 @@ This allows for rapid testing of the server and backend implementation.
 
 def mock_decoder(self):
     # mock with repeating previous token
-    sleep(0.1)  # 10 TPS
+    tps = 3  # simulate a given tokens per second per user
+    sleep(1 / tps)
     output_tokens = self.input_ids[-1].unsqueeze(0)
     # if user has hit max_length, send eos token
     for idx, user in enumerate(self.users):
@@ -51,23 +55,35 @@ def mock_post_init_pybudify(self, args):
     pass
 
 
+backend_initialized = False
+
+
+def global_backend_init():
+    global backend_initialized
+    if not backend_initialized:
+        # Create server log directory
+        if not os.path.exists("server_logs"):
+            os.makedirs("server_logs")
+        override_args = get_backend_override_args()
+        initialize_decode_backend(override_args)
+        backend_initialized = True
+
+
 @patch.object(DecodeBackend, "decode", new=mock_decoder)
 @patch.object(DecodeBackend, "_post_init_pybudify", new=mock_post_init_pybudify)
 @patch.object(
     DecodeBackend, "load_model_and_tokenizer", new=mock_load_model_and_tokenizer
 )
-def test_server():
-    if not os.path.exists("server_logs"):
-        os.makedirs("server_logs")
-    override_args = get_backend_override_args()
-    initialize_decode_backend(override_args)
+def create_test_server():
+    global_backend_init()
+    return app
+
+
+if __name__ == "__main__":
+    app = create_test_server()
     app.run(
         debug=True,
         port=inference_config.backend_server_port,
         host="0.0.0.0",
         use_reloader=False,
     )
-
-
-if __name__ == "__main__":
-    test_server()

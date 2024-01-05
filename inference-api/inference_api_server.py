@@ -20,6 +20,7 @@ app = Flask(__name__)
 app.secret_key = "your_secret_key"
 INIT_ID = "COMPILE-INITIALIZATION"
 
+
 class Context:
     # Store current context
     # Store conversation history
@@ -32,6 +33,14 @@ class Context:
         self.user_parameters = {}
         # Initialize the lock
         self.conversations_lock = Lock()
+
+    def get_num_decoding_users(self):
+        with self.conversations_lock:
+            return self.num_decoding_users
+
+    def set_num_decoding_users(self, value):
+        with self.conversations_lock:
+            self.num_decoding_users = value
 
 
 # Shared variables with a lock for thread-safe access
@@ -342,9 +351,6 @@ def copy_tvm_cache_to_cwd():
                 shutil.copy(src_file, dest_file)
 
 
-
-
-
 def initialize_decode_backend(override_args):
     global input_queue
     global output_queue
@@ -357,7 +363,13 @@ def initialize_decode_backend(override_args):
     # run the decode backend in a separate process
     p = multiprocessing.Process(
         target=run_decode_backend,
-        args=(input_queue, output_queue, status_queue, override_args, inference_config.backend_debug_mode),
+        args=(
+            input_queue,
+            output_queue,
+            status_queue,
+            override_args,
+            inference_config.backend_debug_mode,
+        ),
     )
     p.start()
     default_params, _ = get_user_parameters({})
@@ -423,9 +435,10 @@ def respond_to_users():
 
 
 def status_func():
+    global context
     time_last_keep_alive_input = time.time()
     while True:
-        time.sleep(1)
+        time.sleep(0.2)
         # attempt to get backend status, skip if it is blocked waiting for input
         if not status_queue.empty():
             (
@@ -435,6 +448,7 @@ def status_func():
             ) = status_queue.get_nowait()
             print("num_decoding_users: ", num_decoding_users)
             print("prompt_q_size: ", prompt_q_size)
+            context.set_num_decoding_users(num_decoding_users)
         time_since_response = time.time() - get_time_last_response()
         time_since_keep_live = time.time() - time_last_keep_alive_input
         if (
@@ -452,11 +466,10 @@ def status_func():
 
 
 def preprocess_prompt(data):
-    user_text, error = safe_convert_type(
+    prompt, error = safe_convert_type(
         data_dict=data, key="text", dest_type=str, default=""
     )
-    preprocessed_prompt = f"User: {user_text}\nAI: "
-    return preprocessed_prompt, error
+    return prompt, error
 
 
 def safe_convert_type(data_dict, key, dest_type, default):
@@ -489,7 +502,7 @@ def apply_parameter_bounds(params):
         value = params[key]
         within_bounds = lower_bound <= value <= upper_bound
         if not within_bounds:
-            status_phrase = f"Parameter: {key} is outside bounds, {lower_bound} <= {value} <= {upper_bound}."
+            status_phrase = f"Parameter: {key}={value} is outside bounds, {lower_bound} <= {key} <= {upper_bound}."
             status_code = 400
             error = ({"message": status_phrase}, status_code)
             return {}, error
@@ -536,14 +549,14 @@ def sanitize_request(request):
     if error:
         return None, None, None, error
 
+    params, error = get_user_parameters(data)
+    if error:
+        return None, None, None, error
+
     if not prompt:
         error = {
             "message": "required 'text' parameter is either empty or not provided"
         }, 400
-        return None, None, None, error
-
-    params, error = get_user_parameters(data)
-    if error:
         return None, None, None, error
 
     params, error = apply_parameter_bounds(params)
@@ -594,14 +607,9 @@ def get_output(session_id):
         yield out_text
 
 
-@app.route("/predictions/falcon40b", methods=["POST"])
-def inference():
-    start_time = time.time()
-    # user will get 400 on invalid input, with helpful status message
-    prompt, params, user_session_id, error = sanitize_request(request)
-    if error:
-        return error
-
+def handle_inference(prompt, params, user_session_id):
+    global context
+    error = None
     # create a session_id if not supplied
     if "session_id" not in session and user_session_id is None:
         session["session_id"] = str(uuid.uuid4())
@@ -612,34 +620,80 @@ def inference():
         session["session_id"] = str(uuid.uuid4())
 
     # if input_q full, retry with simple back-off
-    for timeout in [1, 1, 1, 1, 1, 5, 5, 5, 10]:
+    for timeout in [0.025, 0.05, 0.1, 0.2, 0.4, 0.8, 1.6, 3.2]:
         if input_queue.qsize() >= inference_config.max_input_qsize:
             # add jitter
-            sleep_t = timeout * random.random()
-            print(f"retry: {sleep_t}, session: {session['session_id']} ")
+            sleep_t = timeout + 0.025 * random.random()
             time.sleep(sleep_t)
         else:
             break
     else:
-        return {"message": "Service busy"}, 500
+        error = {"message": "Service overloaded, try again later."}, 503
+        return None, error
 
     # input
     session_id = session.get("session_id")
     input_queue.put((session_id, prompt, params))
-    
+
     if inference_config.frontend_debug_mode:
         # Log user's prompt
         with open(f"server_logs/prompt_{session_id}.txt", "a") as f:
             f.write("Prompt:\n" + prompt + "\n")
 
+    return session_id, error
+
+
+def chat_prompt_preprocessing(prompt):
+    preprocessed_prompt = f"User: {prompt}\nAI: "
+    return preprocessed_prompt
+
+
+@app.route("/predictions/falcon40b", methods=["POST"])
+def chat_inference():
+    # user will get 400 on invalid input, with helpful status message
+    prompt, params, user_session_id, error = sanitize_request(request)
+    if error:
+        return error
+    preprocessed_prompt = chat_prompt_preprocessing(prompt)
+    session_id, error = handle_inference(preprocessed_prompt, params, user_session_id)
+    if error:
+        return error
+
     # output
     return Response(get_output(session_id), content_type="text/event-stream")
 
 
+@app.route("/inference/falcon40b", methods=["POST"])
+def inference():
+    # user will get 400 on invalid input, with helpful status message
+    prompt, params, user_session_id, error = sanitize_request(request)
+    if error:
+        return error
+    session_id, error = handle_inference(prompt, params, user_session_id)
+    if error:
+        return error
+    # output
+    return Response(get_output(session_id), content_type="text/event-stream")
+
+
+backend_initialized = False
+
+
+def global_backend_init():
+    if not backend_initialized:
+        # Create server log directory
+        if not os.path.exists("server_logs"):
+            os.makedirs("server_logs")
+        override_args = get_backend_override_args()
+        initialize_decode_backend(override_args)
+        backend_initialized = True
+
+
+def create_server():
+    global_backend_init()
+    return app
+
+
 if __name__ == "__main__":
-    # Create server log directory
-    if not os.path.exists("server_logs"):
-        os.makedirs("server_logs")
-    override_args = get_backend_override_args()
-    initialize_decode_backend(override_args)
+    app = create_server()
     app.run(debug=False, port=inference_config.backend_server_port, host="0.0.0.0")
