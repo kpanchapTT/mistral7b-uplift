@@ -709,6 +709,7 @@ backend_initialized = False
 
 
 def global_backend_init():
+    global backend_initialized
     if not backend_initialized:
         # Create server log directory
         if not os.path.exists("server_logs"):

@@ -6,3 +6,4 @@ reload = False
 wsgi_app = "inference_api_server:create_server()"
 worker_class = "gthread"
 threads = 96
+timeout = 120
