@@ -58,7 +58,7 @@ RUN apt-get install -y sudo \
 WORKDIR "${HOME_DIR}/${APP_DIR}"
 
 COPY "inference-api" "${HOME_DIR}/${APP_DIR}/inference-api"
-COPY "requirements_minimal.txt" "${HOME_DIR}/${APP_DIR}/"
+COPY "requirements.txt" "${HOME_DIR}/${APP_DIR}/"
 COPY "run_inference_api.sh" "${HOME_DIR}/${APP_DIR}/"
 
 RUN chown -R user:user "${HOME_DIR}"
@@ -73,7 +73,7 @@ COPY "soft_harvest_2023-09-14-3d569476654ec0cd" "${HOME_DIR}/"
 RUN chmod +x "${HOME_DIR}/tt-smi-wh-8.C.0.0_2023-11-02-ddcfb4b7bb67635e"
 RUN chmod +x "${HOME_DIR}/soft_harvest_2023-09-14-3d569476654ec0cd"
 
-RUN pip3 install -r "requirements_minimal.txt"
+RUN pip3 install -r "requirements.txt" --default-timeout=120
 
 # cleanup
 RUN rm -rf /var/lib/apt/lists/* \
