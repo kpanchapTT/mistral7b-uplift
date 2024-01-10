@@ -2,8 +2,6 @@
 
 # Setup
 
-
-
 ## env setup
 
 ```bash

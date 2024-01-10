@@ -43,7 +43,6 @@ def mock_decoder(self):
 
 def mock_load_model_and_tokenizer(self, args):
     from transformers import AutoTokenizer
-
     # # mock model
     model = None
     # Load tokenizer
