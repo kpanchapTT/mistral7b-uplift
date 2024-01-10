@@ -73,7 +73,7 @@ COPY "soft_harvest_2023-09-14-3d569476654ec0cd" "${HOME_DIR}/"
 RUN chmod +x "${HOME_DIR}/tt-smi-wh-8.C.0.0_2023-11-02-ddcfb4b7bb67635e"
 RUN chmod +x "${HOME_DIR}/soft_harvest_2023-09-14-3d569476654ec0cd"
 
-RUN pip3 install -r "requirements.txt" --default-timeout=120
+RUN pip3 install -r "requirements.txt" --no-deps --default-timeout=120
 
 # cleanup
 RUN rm -rf /var/lib/apt/lists/* \
