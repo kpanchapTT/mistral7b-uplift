@@ -38,3 +38,4 @@ site/
 !falcon-40b-inference-api/requirements_dev.txt
 !falcon-40b-inference-api/inference-api/test_data/before_top_pk_output.pt
 !falcon-40b-inference-api/requirements_minimal.txt
+!falcon-40b-inference-api/inference-api/data/multi_prompt.json
