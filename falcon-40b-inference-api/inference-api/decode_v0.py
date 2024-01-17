@@ -357,10 +357,10 @@ def load_model_and_tokenizer(args):
     # from tt_models.falcon40b.tt_modeling_RW_odkv_t import RWForCausalLM as RWForCausalODKV_T
     from transformers import AutoModelForCausalLM, AutoTokenizer, logging
     from tt_models.falcon40b.configuration_RW import RWConfig
+
     # from tt_models.falcon40b.debug import RWForCausalLM as RWForCausalLMTTdebug
     # from tt_models.falcon40b.modelling_RW_torch1 import RWForCausalLM as RWForCausalLMTorch1
-    from tt_models.falcon40b.tt_modeling_RW import \
-        RWForCausalLM as RWForCausalLMTT
+    from tt_models.falcon40b.tt_modeling_RW import RWForCausalLM as RWForCausalLMTT
 
     logging.set_verbosity_error()
 

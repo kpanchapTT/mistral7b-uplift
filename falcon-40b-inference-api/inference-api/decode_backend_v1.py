@@ -224,9 +224,9 @@ class DecodeBackend:
             )
             idx = self._find_free_user_slot()
             self.users[idx] = user_info
-            with open(f"backend_logs/{user_id}.txt", "a") as f:
-                f.write("\n<Prompt>: " + prompt + "\n")
             if self.verbose:
+                with open(f"backend_logs/{user_id}.txt", "a") as f:
+                    f.write("\n<Prompt>: " + prompt + "\n")
                 with open("backend_logs/decode_backend.txt", "a") as f:
                     f.write(
                         f"Added user {user_id} to slot {idx} with prompt: {prompt}\n"
@@ -238,7 +238,7 @@ class DecodeBackend:
 
         if self._get_num_of_users() == 0:
             while prompt_q.empty():
-                sleep(0.1)
+                sleep(0.02)
             self._add_users_from_non_empty_queue(prompt_q)
 
         else:
@@ -450,11 +450,10 @@ class DecodeBackend:
             )
             output_q.put((self.users[i].user_id, return_text))
 
-            # Log user's output
-            with open(f"backend_logs/{self.users[i].user_id}.txt", "a") as f:
-                f.write(return_text)
-
             if self.verbose:
+                # Log user's output
+                with open(f"backend_logs/{self.users[i].user_id}.txt", "a") as f:
+                    f.write(return_text)
                 with open("backend_logs/decode_backend.txt", "a") as f:
                     f.write(f"\npush_outputs()\n")
                     f.write(
