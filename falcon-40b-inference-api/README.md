@@ -117,8 +117,6 @@ For testing the following environment variables can be used to switch the backen
 -e FALCON_40B_PYTORCH_NO_WEIGHTS='1' 
 ```
 
-
-
 # Documentation 
 
 `inference_api_server.py` runs the main flask server that is behind the proxy.
