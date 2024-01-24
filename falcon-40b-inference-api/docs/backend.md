@@ -24,11 +24,18 @@ The following diagram shows the placement of Falcon 40B with:
 * 60 layers each broken into a separate epoch
 * Multi-query flash attention (MQA) fractured across 16 wormhole chips/modules
 * MLP fractured across 8 wormhole chips/modules
-* 
 ![Falcon40B_Galaxy_placement](diagrams/Falcon40B_Galaxy_placement.png)
 
 
 ## Decoder layer
+
+Falcon uses a decoder only architecure, the decoder uses the following modifications from
+original multi-head (scaled dot-product) attention:
+ 
+* Flash Attention
+* Rotary Positional Embedding (RoPE)
+* Multi-Query Attention
+* Parallel Attention and Feed-Forward (MLP) Layers
 
 ![Falcon40B_Galaxy_decoder_layer](diagrams/Falcon40B_Galaxy_decoder_layer.png)
 
