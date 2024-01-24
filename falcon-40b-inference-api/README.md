@@ -101,7 +101,7 @@ sudo docker run --rm -ti \
     -v /proj_sw/large-model-cache/falcon40b/tvm_cache:/mnt/falcon-galaxy-store/tvm_cache \
     -v /proj_sw/large-model-cache/falcon40b/tti_cache:/mnt/falcon-galaxy-store/tti_cache \
     -e MODEL_WEKA_DIR=/mnt/falcon-galaxy-store \
-    -e JWT_SECRET=test-secret-456\
+    -e JWT_SECRET=test-secret-456 \
     -e FALCON_40B_LOG_LEVEL_DEBUG='1' \
     -e FALCON_40B_2LAYER='1' \
     -e FALCON_40B_TTI_SUFFIX='v2' \
@@ -117,17 +117,10 @@ For testing the following environment variables can be used to switch the backen
 -e FALCON_40B_PYTORCH_NO_WEIGHTS='1' 
 ```
 
-
-
 # Documentation 
 
-`inference_api_server.py` runs the main flask server that is behind the proxy.
-This file starts `decode_backend_v1.run_decode_backend` as a `multiprocessing.Process`
-
-`DecodeBackend.run_generate` is the main backend, it connects with the flask server using 3 `multiprocessing.Queue`s:
-- input_queue
-- output_queue
-- status_queue
+Flask API server frontend documentation: [docs/frontend.md](docs/frontend.md)
+Galaxy Falcon 40B backend documentation: [docs/backend.md](docs/backend.md)
 
 ## Life cycle of requests
 
@@ -140,7 +133,6 @@ Each token is pushed onto the output_queue once it is generated. The output_queu
 When decoding is finished for a user within the user_rows it is evicted from the `DecodeBackend.users` list. On the next loop over inputing data from the input_queue this user_row will be filled if there is input prompt data for it.
 
 The flask server request process having received the EOS token marks the connection closed and it's session_id as ready for deletion in the dict of session_id keyed queues.
-
 
 ## Deployment
 

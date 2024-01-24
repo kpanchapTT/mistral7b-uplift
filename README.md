@@ -8,7 +8,7 @@ Project Falcon planning documentation: https://docs.google.com/document/d/1811Cs
 
 Deploy Falcon 40B in the cloud, API can be accessesed using JWT, basic user parameters exposed: temperature, top_k, top_p, stop_sequence, max_tokens.
 
-Technical documentation: [inference-api/README.md](inference-api/README.md)
+Technical documentation: [falcon-40b-inference-api/README.md](falcon-40b-inference-api/README.md)
 
 use cases:
 1. Falcon 40B integrated with AI playground
