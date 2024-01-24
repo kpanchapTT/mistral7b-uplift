@@ -185,9 +185,9 @@ RWConfig {
             * self.dense_list: nn.ModuleList(Linear)
     * defines `self.blocks` -> `SequentialCaller`
 * `model.set_padded_lmh(padding=512)`
-    * TODO
-* `model.fracture_vocab(fracture_factor=args.fracture_vocab_factor)`
-    * TODO
+    * allows us to pad the vocab size to a power of 32, which is better for picking good grid sizes in hardware.
+* `model.fracture_vocab(fracture_factor=args.fracture_vocab_factor), default=8`
+    * fractued the LM head into 8 groups, which was necessary at the time - it was not possible for us to concatenate all fractures of the LM head together, so it is split into 8 groups which are each fractured, and then return the groups for the host to concatenate.
 * `model.transformer.put_lm_head_on_device(model.lm_head)`
     * `self.norm = ln_f`,
     * `self.lm_head = lm_head`
@@ -354,7 +354,41 @@ self.self_attention() -> Attention.forward() -> return self.efficient_forward_fl
 
 `keys` and `values` here represent the current next tokens while the caches contain the keys and values for previous `seqlen=2048`.
 
-__Note__: this is where KV cache is used, input to `flash_decode_attention`:
+__Note__: this is where new `keys` and `values` are computed:
+
+```python
+        queries = []
+        keys = []
+        values = []
+        for i in range(self.num_kv):
+            query = (
+                self.wq_list[i](hidden_states)
+                .reshape(num_batch, users, -1, self.head_dim)
+                .transpose(1, 2)
+            )  # [batch, group, users, head_dim]
+            query = apply_rotary_pos_emb_q(query, cos, sin)
+            queries.append(query.transpose(1, 2))  # [batch, users, group, head_dim]
+
+            key = self.wk_list[i](hidden_states).reshape(
+                num_batch, 1, users, self.head_dim
+            )  # [batch, 1, users, head_dim]
+            key = apply_rotary_pos_emb_k(key, cos, sin)
+            keys.append(key.transpose(1, 2))  # [batch, users, 1, head_dim]
+
+            value = self.wv_list[i](hidden_states).reshape(
+                num_batch, users, 1, self.head_dim
+            )  # [batch, users, 1, head_dim]
+            values.append(value)
+```
+
+The new `keys` and `values` are masked (`kv_read_mask` and `kv_write_mask`) and merged with `keys_cache` and values_cache respectively, however this is done __independently__ of the `flash_decode_attention` implementation which has inputs of `Ks=[keys_cache[i], keys[i]],`. This is because the specialized implementation of `flash_decode_attention`.
+
+__Specialized flash_decode_attention__: The original FlashAttention does (QK^T)V sequentially using a fused kernel. Instead of doing the this sequentially, we applied FlashAttention principles in a specialized version for Tenstorrent hardware to:
+    1. first gather all stats from QK^T in one loop, and do another for loop for the V matmul
+    2. split attention into two parts: new attention, and cache attention, i.e. acting on keys_cache[i] and keys[i]
+
+This improves performance because updating the KV cache with both a new K and new V before doing attention was a large data dependency and created a bottleneck.
+
 ```python
         keys_cache = layer_past[:8]
         values_cache = layer_past[8:]
@@ -370,7 +404,9 @@ __Note__: this is where KV cache is used, input to `flash_decode_attention`:
         ]
 ```
 
-__Note__: original flash attention does this sequentially to do kernels fusion. We do not do that here
-We have a modified version where we first gather all stats and do another for loop for adding V matmul.
-
-Finally the output of the graph is the out logits, keys_merged, values_merged. The host
+Finally `efficient_forward_flash_decode` returns `output_tensor`, `keys_merged`, `values_merged`.
+Tracing back up the call execution stack:
+1. `DecoderLayer.forward`
+    `output_tensor`, `keys_merged`, `values_merged` are mapped to: `attention_output`, `key_past`, `value_past`, and `attention_output` is further processed into `output`.
+2. `SequentialCaller.forward`
+    `output`, `key_past`, `value_past` are all packed into `result` in the format: result = [hidden_states, key_past + value_past]
