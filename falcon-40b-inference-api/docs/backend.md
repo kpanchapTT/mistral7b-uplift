@@ -43,11 +43,13 @@ original multi-head (scaled dot-product) attention:
 
 ## how are user rows different than batch dimension?
 
-user rows is an extra dimension added, similar to batching, to increase throughput. The difference with user rows is it is fixed at 32 and optimized for the memory and compute utilization of Galaxy. The on device KV (Key Value) cache is stored in SRAM.
+User rows (sometimes called slots) is an extra dimension added, similar to batching, to increase throughput. The difference with user rows is it is fixed at 32 and optimized for the memory and compute utilization of Galaxy. The on device KV (Key Value) cache is stored in SRAM.
 
 ## How is KV cache managed and input to Galaxy device?
 
-The KV cache is initialized and stored in host memory (RAM) within `DecodeBackend.past_key_values` as tuple(list[num_batch, user_rows, seqlen, head_dim], list[num_batch, user_rows, seqlen, head_dim]). The length of the lists is num_kv_head. The K and V caches are therefore each torch.Size([1, 32, 2048, 64, 8]) at float16b (2 Bytes each), this is 64 MB, 128 MB for both K and V caches. Thats 7680 MB total for all 60 layers, just shy of 8 GB in total. 
+On device KV (sometimes abbreviated to ODKV) cache is only written to Tenstorrent device from host during model initialization, during runtime there is no host connection for read/write. Only the model running on device is reading/writing to KV cache for each user row. This means `self.past_key_values` passed into `self.model.main_forward_part()`(described below) __is not used when running on Tenstorrent device__ (it is used when running on CPU). The host inputs `kv_mask_id` and `attention_mask` which __are used at runtime on Tenstorrent device__ to tell each user's decode token generation which ids in the KV cache are to be read as context and which the the generation next token is to be written to. This allows for basic KV cache management from the host during runtime, which is necessary because the decode graph will continue making contiguous writes to the on device KV cache per user row. For example, when a new user prompt is added, the `kv_mask_id` and `attention_mask` are updated to remove the context of the previous user prompt completion in that user row memory space. However this still does not allow for writing an entire KV cache to device for a new user row.
+
+The KV cache is initialized and stored in host memory (RAM) within `DecodeBackend.past_key_values` as tuple(list[num_batch, user_rows, seqlen, head_dim], list[num_batch, user_rows, seqlen, head_dim]). The length of the lists is num_kv_head. The K and V caches are therefore each torch.Size([1, 32, 2048, 64, 8]) at float16b (2 Bytes each), this is 64 MB, 128 MB for both K and V caches. Thats 7680 MB total for all 60 layers, just shy of 8 GB in total. As mentioned above, this is however not written to on device KV cache at runtime, which has the same memory characteristics in device RAM.
 
 The current Galaxy placement has Multi-Query Flash Attention layers are fractured onto 16 chips (Galaxy modules) with SRAM of 120 MB x 16 = 1920 MB, however the model is broken into 1 layer per epoch, so only 128 MB is needed for the KV cache per layer.
 
@@ -214,7 +216,7 @@ RWConfig {
 
 ## Generation
 
-The generation is run in a loop, generating a single token output per user_row.
+The generation is run in a loop, generating a single token output per user_row. Importantly, as mentioned in the KV cache management FAQ, `self.past_key_values` thought passed in, __does not get used__ by the on device KV cache implementation for running on Tenstorrent device.
 
 1. Within `decode` generation runs via:
 ```python
@@ -410,3 +412,4 @@ Tracing back up the call execution stack:
     `output_tensor`, `keys_merged`, `values_merged` are mapped to: `attention_output`, `key_past`, `value_past`, and `attention_output` is further processed into `output`.
 2. `SequentialCaller.forward`
     `output`, `key_past`, `value_past` are all packed into `result` in the format: result = [hidden_states, key_past + value_past]
+3. `RWModel.blocks` -> `DecodeBackend.model.main_forward_part` output is then unpacked in `DecodeBackend.decode`
