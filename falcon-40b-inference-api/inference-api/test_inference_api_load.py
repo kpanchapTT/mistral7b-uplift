@@ -104,8 +104,7 @@ def test_api_load():
     tokens_generated = [0] * len(load_prompts)
     start_time = time.time()
     for idx, prompt in enumerate(load_prompts):
-        # print(f"Prompt {idx}: {prompt}")
-        # time.sleep(0.001)
+        time.sleep(0.01)
         thread = threading.Thread(target=test_api_call, args=[prompt, False, idx])
         threads.append(thread)
         thread.start()
@@ -115,7 +114,7 @@ def test_api_load():
     while any([t.is_alive() for t in threads]) or not output_queue.empty():
         idx, _ = output_queue.get()
         tokens_generated[idx] += 1
-        time.sleep(0.01)
+        time.sleep(0.001)
 
     end_time = time.time()
     print(f"\nTotal tokens_generated: {sum(tokens_generated)}")
