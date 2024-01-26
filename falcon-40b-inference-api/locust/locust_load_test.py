@@ -1,6 +1,7 @@
 import os
+import json
 
-from locust import FastHttpUser, task, between
+from locust import HttpUser, task, between
 
 
 TEST_PROMPTS = [
@@ -39,23 +40,26 @@ TEST_PROMPTS = [
 ]
 
 
-class UserPrompt(FastHttpUser):
+class UserPrompt(HttpUser):
     wait_time = between(1, 3)
 
     def __init__(self, parent):
         super().__init__(parent)
         self.i_sample = 0
         self.n_samples = len(TEST_PROMPTS)
-        self.post_str = "/predictions/falcon40b/"
+        self.post_str = "/predictions/falcon40b"
         self.api_key = f"{os.environ['AUTHORIZATION']}"
 
     @task
     def test(self):
-        sample = TEST_PROMPTS[self.i_sample % self.n_samples]
-        postdata = {"text": sample}
+        prompt_text = TEST_PROMPTS[self.i_sample % self.n_samples]
+        postdata = {"text": prompt_text,}
         headers = {
             "Authorization": self.api_key,
-            "Content-Type": "application/json",
+            "content-type": "application/json",
         }
-        self.client.post(self.post_str, json=postdata, headers=headers)
+        # Note: clear cookies before each request, unless you want to test repeated calls from same user session
+        # self.client is an instance of HttpSession, which is a wrapper for a requests.Session
+        self.client.cookies.clear()
+        res = self.client.post(self.post_str, json=postdata, headers=headers)
         self.i_sample += 1
