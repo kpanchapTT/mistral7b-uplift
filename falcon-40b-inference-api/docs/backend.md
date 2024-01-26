@@ -43,11 +43,13 @@ original multi-head (scaled dot-product) attention:
 
 ## how are user rows different than batch dimension?
 
-user rows is an extra dimension added, similar to batching, to increase throughput. The difference with user rows is it is fixed at 32 and optimized for the memory and compute utilization of Galaxy. The on device KV (Key Value) cache is stored in SRAM.
+User rows (sometimes called slots) is an extra dimension added, similar to batching, to increase throughput. The difference with user rows is it is fixed at 32 and optimized for the memory and compute utilization of Galaxy. The on device KV (Key Value) cache is stored in SRAM.
 
 ## How is KV cache managed and input to Galaxy device?
 
-The KV cache is initialized and stored in host memory (RAM) within `DecodeBackend.past_key_values` as tuple(list[num_batch, user_rows, seqlen, head_dim], list[num_batch, user_rows, seqlen, head_dim]). The length of the lists is num_kv_head. The K and V caches are therefore each torch.Size([1, 32, 2048, 64, 8]) at float16b (2 Bytes each), this is 64 MB, 128 MB for both K and V caches. Thats 7680 MB total for all 60 layers, just shy of 8 GB in total. 
+On device KV (sometimes abbreviated to ODKV) cache is only written to Tenstorrent device from host during model initialization, during runtime there is no host connection for read/write. Only the model running on device is reading/writing to KV cache for each user row. This means `self.past_key_values` passed into `self.model.main_forward_part()`(described below) __is not used when running on Tenstorrent device__ (it is used when running on CPU). The host inputs `kv_mask_id` and `attention_mask` which __are used at runtime on Tenstorrent device__ to tell each user's decode token generation which ids in the KV cache are to be read as context and which the the generation next token is to be written to. This allows for basic KV cache management from the host during runtime, which is necessary because the decode graph will continue making contiguous writes to the on device KV cache per user row. For example, when a new user prompt is added, the `kv_mask_id` and `attention_mask` are updated to remove the context of the previous user prompt completion in that user row memory space. However this still does not allow for writing an entire KV cache to device for a new user row.
+
+The KV cache is initialized and stored in host memory (RAM) within `DecodeBackend.past_key_values` as tuple(list[num_batch, user_rows, seqlen, head_dim], list[num_batch, user_rows, seqlen, head_dim]). The length of the lists is num_kv_head. The K and V caches are therefore each torch.Size([1, 32, 2048, 64, 8]) at float16b (2 Bytes each), this is 64 MB, 128 MB for both K and V caches. Thats 7680 MB total for all 60 layers, just shy of 8 GB in total. As mentioned above, this is however not written to on device KV cache at runtime, which has the same memory characteristics in device RAM.
 
 The current Galaxy placement has Multi-Query Flash Attention layers are fractured onto 16 chips (Galaxy modules) with SRAM of 120 MB x 16 = 1920 MB, however the model is broken into 1 layer per epoch, so only 128 MB is needed for the KV cache per layer.
 
@@ -185,9 +187,9 @@ RWConfig {
             * self.dense_list: nn.ModuleList(Linear)
     * defines `self.blocks` -> `SequentialCaller`
 * `model.set_padded_lmh(padding=512)`
-    * TODO
-* `model.fracture_vocab(fracture_factor=args.fracture_vocab_factor)`
-    * TODO
+    * allows us to pad the vocab size to a power of 32, which is better for picking good grid sizes in hardware.
+* `model.fracture_vocab(fracture_factor=args.fracture_vocab_factor), default=8`
+    * fractued the LM head into 8 groups, which was necessary at the time - it was not possible for us to concatenate all fractures of the LM head together, so it is split into 8 groups which are each fractured, and then return the groups for the host to concatenate.
 * `model.transformer.put_lm_head_on_device(model.lm_head)`
     * `self.norm = ln_f`,
     * `self.lm_head = lm_head`
@@ -214,7 +216,7 @@ RWConfig {
 
 ## Generation
 
-The generation is run in a loop, generating a single token output per user_row.
+The generation is run in a loop, generating a single token output per user_row. Importantly, as mentioned in the KV cache management FAQ, `self.past_key_values` thought passed in, __does not get used__ by the on device KV cache implementation for running on Tenstorrent device.
 
 1. Within `decode` generation runs via:
 ```python
@@ -354,7 +356,41 @@ self.self_attention() -> Attention.forward() -> return self.efficient_forward_fl
 
 `keys` and `values` here represent the current next tokens while the caches contain the keys and values for previous `seqlen=2048`.
 
-__Note__: this is where KV cache is used, input to `flash_decode_attention`:
+__Note__: this is where new `keys` and `values` are computed:
+
+```python
+        queries = []
+        keys = []
+        values = []
+        for i in range(self.num_kv):
+            query = (
+                self.wq_list[i](hidden_states)
+                .reshape(num_batch, users, -1, self.head_dim)
+                .transpose(1, 2)
+            )  # [batch, group, users, head_dim]
+            query = apply_rotary_pos_emb_q(query, cos, sin)
+            queries.append(query.transpose(1, 2))  # [batch, users, group, head_dim]
+
+            key = self.wk_list[i](hidden_states).reshape(
+                num_batch, 1, users, self.head_dim
+            )  # [batch, 1, users, head_dim]
+            key = apply_rotary_pos_emb_k(key, cos, sin)
+            keys.append(key.transpose(1, 2))  # [batch, users, 1, head_dim]
+
+            value = self.wv_list[i](hidden_states).reshape(
+                num_batch, users, 1, self.head_dim
+            )  # [batch, users, 1, head_dim]
+            values.append(value)
+```
+
+The new `keys` and `values` are masked (`kv_read_mask` and `kv_write_mask`) and merged with `keys_cache` and values_cache respectively, however this is done __independently__ of the `flash_decode_attention` implementation which has inputs of `Ks=[keys_cache[i], keys[i]],`. This is because the specialized implementation of `flash_decode_attention`.
+
+__Specialized flash_decode_attention__: The original FlashAttention does (QK^T)V sequentially using a fused kernel. Instead of doing the this sequentially, we applied FlashAttention principles in a specialized version for Tenstorrent hardware to:
+    1. first gather all stats from QK^T in one loop, and do another for loop for the V matmul
+    2. split attention into two parts: new attention, and cache attention, i.e. acting on keys_cache[i] and keys[i]
+
+This improves performance because updating the KV cache with both a new K and new V before doing attention was a large data dependency and created a bottleneck.
+
 ```python
         keys_cache = layer_past[:8]
         values_cache = layer_past[8:]
@@ -370,7 +406,10 @@ __Note__: this is where KV cache is used, input to `flash_decode_attention`:
         ]
 ```
 
-__Note__: original flash attention does this sequentially to do kernels fusion. We do not do that here
-We have a modified version where we first gather all stats and do another for loop for adding V matmul.
-
-Finally the output of the graph is the out logits, keys_merged, values_merged. The host
+Finally `efficient_forward_flash_decode` returns `output_tensor`, `keys_merged`, `values_merged`.
+Tracing back up the call execution stack:
+1. `DecoderLayer.forward`
+    `output_tensor`, `keys_merged`, `values_merged` are mapped to: `attention_output`, `key_past`, `value_past`, and `attention_output` is further processed into `output`.
+2. `SequentialCaller.forward`
+    `output`, `key_past`, `value_past` are all packed into `result` in the format: result = [hidden_states, key_past + value_past]
+3. `RWModel.blocks` -> `DecodeBackend.model.main_forward_part` output is then unpacked in `DecodeBackend.decode`
