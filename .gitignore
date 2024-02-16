@@ -1,5 +1,6 @@
 # IDE
 .vscode
+.DS_Store
 
 # Python
 *.pyc
@@ -40,4 +41,5 @@ site/
 !falcon-40b-inference-api/inference-api/test_data/before_top_pk_output.pt
 !falcon-40b-inference-api/requirements_minimal.txt
 !falcon-40b-inference-api/inference-api/data/multi_prompt.json
-!falcon-40b-inference-api/docs/design/openapi_v3_spec.json
+!falcon-40b-inference-api/docs/openapi/tenstorrent_llm_openapi_v3.json
+!falcon-40b-inference-api/docs/openapi/dev_tenstorrent_llm_openapi_v3.json

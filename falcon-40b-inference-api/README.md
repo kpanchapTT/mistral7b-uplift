@@ -7,7 +7,7 @@
 ```bash
 python3 -m venv env
 source env/bin/activate
-python3 -m pip install --upgrade pip=20.0.2 setuptools wheel
+python3 -m pip install --upgrade pip==20.0.2 setuptools wheel
 python3 -m pip install pybuda-0.1.231113+dev.wh.b0.cdbd30a-cp38-cp38-linux_x86_64.whl
 python3 -m pip install tvm-0.9.0+dev.tt.c2076affc-cp38-cp38-linux_x86_64.whl
 python3 -m pip install -r requirements.txt
@@ -106,7 +106,7 @@ sudo docker run --rm -ti \
     -e FALCON_40B_2LAYER='1' \
     -e FALCON_40B_TTI_SUFFIX='v2' \
     -e FALCON_40B_LOAD='1' \
-    ghcr.io/tenstorrent/project-falcon:v0.0.13 bash
+    ghcr.io/tenstorrent/project-falcon:v0.0.16 bash
 ```
 
 For testing the following environment variables can be used to switch the backend server override arguments:
@@ -115,6 +115,27 @@ For testing the following environment variables can be used to switch the backen
 -e FALCON_40B_SAVE='1'
 -e FALCON_40B_LOAD='1'
 -e FALCON_40B_PYTORCH_NO_WEIGHTS='1' 
+```
+
+### Local Docker development
+
+To run the test server without any model runtime support and mounting the repo code:
+```bash
+cd falcon-40b-inference-api
+docker run \
+    --rm \
+    --platform=linux/x86_64 \
+    -ti \
+    -v ${PWD}:
+    -e MODEL_WEKA_DIR=1 \
+    -e JWT_SECRET=test-secret-456 \
+    ghcr.io/tenstorrent/project-falcon:v0.0.16 bash
+```
+
+To run a shell inside the container:
+```bash
+docker ps -a
+docker exec -it $CONTAINER_ID bash
 ```
 
 # Documentation 

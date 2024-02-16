@@ -1,0 +1,68 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+      "title": "Customer Inference API",
+      "description": "Customer Inference API",
+      "version": "1.0"
+  },
+  "servers": [
+      {
+          "url": "https://app-dev.tenstorrent.com"
+      }
+  ],
+  "paths": {
+      "/v1/key/chat/completions/falcon-40b-instruct": {
+          "post": {
+              "summary": "/v1/key/chat/completions/falcon-40b-instruct - POST",
+              "description": "inference",
+              "operationId": "post-v1-key-chat-completions-falcon-40b-instruct",
+              "requestBody": {
+                  "content": {
+                      "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                            "text": {
+                                "type": "string"
+                            },
+                            "temperature": {
+                                "type": "number"
+                            }
+                        }
+                    },
+                    "example": {
+                        "text": "Translate 'hello world' into French.",
+                        "temperature": 0.7
+                    }
+                  }
+                }
+              },
+              "responses": {
+                  "200": {
+                      "description": "OK"
+                  },
+                  "400": {
+                    "description": "Bad request"
+                  },
+                  "404": {
+                    "description": "Unauthorized"
+                }
+              }
+          }
+      }
+  },
+  "components": {
+      "securitySchemes": {
+          "apiKeyHeader": {
+              "type": "apiKey",
+              "name": "Authorization",
+              "in": "header"
+          }
+      }
+  },
+  "security": [
+      {
+          "apiKeyHeader": []
+      }
+  ]
+}
