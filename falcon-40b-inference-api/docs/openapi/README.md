@@ -8,13 +8,14 @@ We are using OpenAPI v3.0.1 because it is supported by Azure APIM for import and
 
 See: https://github.com/swagger-api/swagger-ui/blob/master/docs/usage/installation.md#docker
 
-PWD should be `project-falcon/falcon-40b-inference-api/docs`
+PWD should be `project-falcon/falcon-40b-inference-api`
 
 ```bash
 docker pull swaggerapi/swagger-ui
-docker run -p 80:8080 -e SWAGGER_JSON=/mnt/openapi/tenstorrent_llm_openapi_v3.json -v $PWD/openapi:/mnt/openapi swaggerapi/swagger-ui
+docker run -p 8080:8080 -e SWAGGER_JSON=/mnt/openapi/dev_tenstorrent_llm_openapi_v3.json -v $PWD/docs/openapi:/mnt/openapi swaggerapi/swagger-ui
 ```
 
+Go to: http://localhost:8080
 
 ## Deploying on AWS CloudFront + S3
 

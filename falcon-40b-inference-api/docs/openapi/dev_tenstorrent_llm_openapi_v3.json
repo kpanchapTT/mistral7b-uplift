@@ -11,58 +11,83 @@
       }
   ],
   "paths": {
-      "/v1/key/chat/completions/falcon-40b-instruct": {
-          "post": {
-              "summary": "/v1/key/chat/completions/falcon-40b-instruct - POST",
-              "description": "inference",
-              "operationId": "post-v1-key-chat-completions-falcon-40b-instruct",
-              "requestBody": {
-                  "content": {
-                      "application/json": {
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                            "text": {
-                                "type": "string"
-                            },
-                            "temperature": {
-                                "type": "number"
-                            }
-                        }
-                    },
-                    "example": {
-                        "text": "Translate 'hello world' into French.",
-                        "temperature": 0.7
-                    }
+    "/v1/key/chat/completions/falcon-40b-instruct": {
+        "post": {
+            "summary": "/v1/key/chat/completions/falcon-40b-instruct - POST",
+            "description": "Tenstorrent Falcon 40B instruct inference API.",
+            "operationId": "post-v1-key-chat-completions-falcon-40b-instruct",
+            "requestBody": {
+                "content": {
+                    "application/json": {
+                      "schema": {
+                          "type": "object",
+                          "properties": {
+                              "text": {
+                                  "type": "string"
+                              },
+                              "top_k": {
+                                  "type": "number"
+                              },
+                              "top_p": {
+                                  "type": "number"
+                              },
+                              "temperature": {
+                                  "type": "number"
+                              },
+                              "max_tokens": {
+                                  "type": "number"
+                              },
+                              "stop_sequence": {
+                                  "type": "string"
+                              }
+                      }
+                  },
+                  "example": {
+                      "text": "Translate 'hello world' into French.",
+                      "top_k": 1,
+                      "top_p": 0.9,
+                      "temperature": 0.7,
+                      "max_tokens": 32,
+                      "stop_sequence": "."
                   }
                 }
-              },
-              "responses": {
-                  "200": {
-                      "description": "OK"
-                  },
-                  "400": {
-                    "description": "Bad request"
-                  },
-                  "404": {
-                    "description": "Unauthorized"
-                }
               }
-          }
-      }
-  },
-  "components": {
-      "securitySchemes": {
-          "apiKeyHeader": {
-              "type": "apiKey",
-              "name": "Authorization",
-              "in": "header"
-          }
-      }
-  },
-  "security": [
-      {
-          "apiKeyHeader": []
-      }
-  ]
+            },
+            "responses": {
+                "200": {
+                    "description": "Success, returns HTTP 1.1 chunked encoding to send raw text of each generated token to client."
+                },
+                "400": {
+                  "description": "Bad Request, returns `{'message': 'Helpful debug message for client.'}`, e.g. `Parameter: top_p is type=str, expected int`."
+                },
+                "401": {
+                  "description": "Unauthorized"
+                },
+                "500": {
+                  "description": "Internal Server Error, this is default for unhandled exceptions, as defined in backend server and reverse proxy."
+                },
+                "503": {
+                  "description": "Service Unavailable, returns `{'message': 'Service overloaded, try again later.'}`"
+                },
+                "Undocumented": {
+                  "description": "If details are: 'TypeError: NetworkError when attempting to fetch resource.' it is likely a CORS issue. Requests to backend API made from browser must be made from the same subdomain, e.g. `app.tenstorrent.com`."
+                }
+            }
+        }
+    }
+},
+"components": {
+    "securitySchemes": {
+        "apiKeyHeader": {
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
+    }
+},
+"security": [
+    {
+        "apiKeyHeader": []
+    }
+]
 }
