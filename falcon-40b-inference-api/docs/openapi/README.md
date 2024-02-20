@@ -12,7 +12,7 @@ PWD should be `project-falcon/falcon-40b-inference-api`
 
 ```bash
 docker pull swaggerapi/swagger-ui
-docker run -p 8080:8080 -e SWAGGER_JSON=/mnt/openapi/dev_tenstorrent_llm_openapi_v3.json -v $PWD/docs/openapi:/mnt/openapi swaggerapi/swagger-ui
+docker run -p 8080:8080 -e SWAGGER_JSON=/mnt/openapi/dev/dev_tenstorrent_llm_openapi_v3.json -v $PWD/docs/openapi:/mnt/openapi swaggerapi/swagger-ui
 ```
 
 Go to: http://localhost:8080
