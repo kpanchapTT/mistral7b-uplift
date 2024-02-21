@@ -26,3 +26,9 @@ The editted `swagger-initializer.js` to host `tenstorrent_llm_openapi_v3.json` a
 
 1. Place all the above mentioned files into an S3 bucket
 2. Follow instructions in https://repost.aws/knowledge-center/cloudfront-https-requests-s3
+
+## Development notes
+
+Caching may exist at:
+1. Browser level: delete cached data from `tenstorrent.com` to remove cache
+2. CDN CloudFront: disable in caching policy, or add invalidation for `/docs/*` (this is disabled for AWS DEV CloudFront)
