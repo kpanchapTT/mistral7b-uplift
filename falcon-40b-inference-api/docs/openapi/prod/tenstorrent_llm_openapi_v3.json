@@ -1,93 +1,93 @@
 {
-  "openapi": "3.0.1",
-  "info": {
-      "title": "Customer Inference API",
-      "description": "Customer Inference API",
-      "version": "1.0"
-  },
-  "servers": [
-      {
-          "url": "https://app.tenstorrent.com"
-      }
-  ],
-  "paths": {
-      "/v1/key/chat/completions/falcon-40b-instruct": {
-          "post": {
-              "summary": "/v1/key/chat/completions/falcon-40b-instruct - POST",
-              "description": "# Tenstorrent Falcon 40B instruct inference API.\n\n## Request properties\n\n**text**: [required] prompt text sent to model to generate tokens.<br/>\n\n**temperature**: [optional] <br/>\n\n  0.1 < temperature < 1: amplifies certainty of model in its predictions before top_p sampling.<br/>\n  1 < temperature < 10: reduces certainty of model in its predictions before top_p sampling.<br/>\n\n**max_tokens**: [optional] [1 <= max_tokens <=2048] the maximum number of tokens to generate, fewer tokens may be generated and returned if the `stop_sequence` is reached before `max_tokens` tokens.<br/>\n\n**top_k**: [optional] sampling option for next token selection, sample from most likely k tokens. Minimum value top_k=1 (greedy sampling) to maximum top_k=1000 (little effect).<br/>\n\n**top_p**: [optional] sampling option for next token selection, nucleus sampling from tokens within the the top_p value of cumulative probability. top_p=0.01 (near-greedy sampling) to top_p=1.0 (full multinomial sampling).<br/>\n\n**stop_sequence**: [optional] stop generating tokens on first occurence of given sequence (can be a single character or sequence of characters). Options e.g. \".\" stop at sentence or default is `eos_token` or `\"\"`.<br/>\n\n## Response parameters\n\n**text**: model response to prompt as raw text sent using HTTP 1.1 chunked encoding as it is generated from the server backend. The response is truncated given request parameters `max_tokens` and `stop_sequence` as defined above.\n\n### Error responses parameters\n\n**status_code**: Error status code, e.g. 400.\n\n**message**: Description of error, e.g. Malformed JSON request body.",
-              "operationId": "post-v1-key-chat-completions-falcon-40b-instruct",
-              "requestBody": {
-                  "content": {
-                      "application/json": {
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "text": {
-                                    "type": "string"
-                                },
-                                "top_k": {
-                                    "type": "number"
-                                },
-                                "top_p": {
-                                    "type": "number"
-                                },
-                                "temperature": {
-                                    "type": "number"
-                                },
-                                "max_tokens": {
-                                    "type": "number"
-                                },
-                                "stop_sequence": {
-                                    "type": "string"
+    "openapi": "3.0.1",
+    "info": {
+        "title": "Customer Inference API",
+        "description": "Customer Inference API",
+        "version": "1.0"
+    },
+    "servers": [
+        {
+            "url": "https://app.tenstorrent.com"
+        }
+    ],
+    "paths": {
+        "/v1/key/chat/completions/falcon-40b-instruct": {
+            "post": {
+                "summary": "/v1/key/chat/completions/falcon-40b-instruct - POST",
+                "description": "# Tenstorrent Falcon 40B instruct inference API.\n\n## Request properties\n\n**text**: [required] prompt text sent to model to generate tokens.<br/>\n\n**temperature**: [optional, default=1.0] [value range: 0.01 to 100] For 0.1 < temperature < 1: amplifies certainty of model in its predictions before top_p sampling. For 1 < temperature < 10: reduces certainty of model in its predictions before top_p sampling.<br/>\n\n**max_tokens**: [optional, default=128] [value range: 1 to 2048] The maximum number of tokens to generate, fewer tokens may be generated and returned if the `stop_sequence` is reached before `max_tokens` tokens.<br/>\n\n**top_k**: [optional, default=40] [value range: 1 to 1000] Sampling option for next token selection, sample from most likely k tokens. Minimum value top_k=1 (greedy sampling) to maximum top_k=1000 (little effect).<br/>\n\n**top_p**: [optional, default=0.9] [value range: 0.01 to 1.0] Sampling option for next token selection, nucleus sampling from tokens within the the top_p value of cumulative probability. top_p=0.01 (near-greedy sampling) to top_p=1.0 (full multinomial sampling).<br/>\n\n**stop_sequence**: [optional, default=None] Stop generating tokens on first occurence of given sequence (can be a single character or sequence of characters). For example setting \".\" will stop at end of the first sentence, default `eos_token` defined by model tokenizer.<br/>\n\n## Response parameters\n\n**text**: model response to prompt as raw text sent using HTTP 1.1 chunked encoding as it is generated from the server backend. The response is truncated given request parameters `max_tokens` and `stop_sequence` as defined above.\n\n### Error responses parameters\n\n**status_code**: Error status code, e.g. 400.\n\n**message**: Description of error, e.g. Malformed JSON request body.\n\nIf response code is **Undocumented** with message 'TypeError: NetworkError when attempting to fetch resource.' it is likely a CORS issue. Requests to backend API made from browser must be made from the same subdomain, e.g. `app.tenstorrent.com`.",
+                "operationId": "post-v1-key-chat-completions-falcon-40b-instruct",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "text": {
+                                        "type": "string"
+                                    },
+                                    "top_k": {
+                                        "type": "number"
+                                    },
+                                    "top_p": {
+                                        "type": "number"
+                                    },
+                                    "temperature": {
+                                        "type": "number"
+                                    },
+                                    "max_tokens": {
+                                        "type": "number"
+                                    },
+                                    "stop_sequence": {
+                                        "type": "string"
+                                    }
                                 }
+                            },
+                            "example": {
+                                "text": "Translate 'hello world' into French.",
+                                "top_k": 1,
+                                "top_p": 0.9,
+                                "temperature": 0.7,
+                                "max_tokens": 32,
+                                "stop_sequence": "."
+                            }
                         }
-                    },
-                    "example": {
-                        "text": "Translate 'hello world' into French.",
-                        "top_k": 1,
-                        "top_p": 0.9,
-                        "temperature": 0.7,
-                        "max_tokens": 32,
-                        "stop_sequence": "."
                     }
-                  }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Success, returns HTTP 1.1 chunked encoding to send raw text of each generated token to client."
+                    },
+                    "400": {
+                        "description": "Bad Request, returns `{'message': 'Helpful debug message for client.'}`, e.g. `Parameter: top_p is type=str, expected int`."
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "500": {
+                        "description": "Internal Server Error, this is default for unhandled exceptions, as defined in backend server and reverse proxy."
+                    },
+                    "503": {
+                        "description": "Service Unavailable, returns `{'message': 'Service overloaded, try again later.'}`"
+                    },
+                    "Undocumented": {
+                        "description": "If details are: 'TypeError: NetworkError when attempting to fetch resource.' it is likely a CORS issue. Requests to backend API made from browser must be made from the same subdomain, e.g. `app.tenstorrent.com`."
+                    }
                 }
-              },
-              "responses": {
-                  "200": {
-                      "description": "Success, returns HTTP 1.1 chunked encoding to send raw text of each generated token to client."
-                  },
-                  "400": {
-                    "description": "Bad Request, returns `{'message': 'Helpful debug message for client.'}`, e.g. `Parameter: top_p is type=str, expected int`."
-                  },
-                  "401": {
-                    "description": "Unauthorized"
-                  },
-                  "500": {
-                    "description": "Internal Server Error, this is default for unhandled exceptions, as defined in backend server and reverse proxy."
-                  },
-                  "503": {
-                    "description": "Service Unavailable, returns `{'message': 'Service overloaded, try again later.'}`"
-                  },
-                  "Undocumented": {
-                    "description": "If details are: 'TypeError: NetworkError when attempting to fetch resource.' it is likely a CORS issue. Requests to backend API made from browser must be made from the same subdomain, e.g. `app.tenstorrent.com`."
-                  }
-              }
-          }
-      }
-  },
-  "components": {
-      "securitySchemes": {
-          "apiKeyHeader": {
-              "type": "apiKey",
-              "name": "Authorization",
-              "in": "header"
-          }
-      }
-  },
-  "security": [
-      {
-          "apiKeyHeader": []
-      }
-  ]
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "apiKeyHeader": {
+                "type": "apiKey",
+                "name": "Authorization",
+                "in": "header"
+            }
+        }
+    },
+    "security": [
+        {
+            "apiKeyHeader": []
+        }
+    ]
 }
