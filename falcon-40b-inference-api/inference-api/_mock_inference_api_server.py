@@ -55,14 +55,14 @@ def mock_post_init_pybudify(self, args):
 
 
 backend_initialized = False
-
+api_log_dir = os.path.join(inference_config.log_cache, "api_logs")
 
 def global_backend_init():
     global backend_initialized
     if not backend_initialized:
         # Create server log directory
-        if not os.path.exists("server_logs"):
-            os.makedirs("server_logs")
+        if not os.path.exists(api_log_dir):
+            os.makedirs(api_log_dir)
         override_args = get_backend_override_args()
         initialize_decode_backend(override_args)
         backend_initialized = True

@@ -48,7 +48,7 @@ class Context:
 context = Context()
 time_last_response = time.time()
 time_last_response_lock = Lock()
-
+api_log_dir = os.path.join(inference_config.log_cache, "api_logs")
 
 def get_falcon40b_backend_overrides(
     use_60_layers=True,
@@ -429,7 +429,7 @@ def respond_to_users():
         output_queue_map[response_session_id].put(response)
         if inference_config.frontend_debug_mode:
             # Log response
-            with open(f"server_logs/response_{response_session_id}.txt", "a") as f:
+            with open(f"{api_log_dir}/response_{response_session_id}.txt", "a") as f:
                 f.write(response)
         # the outputs must be reclaimed
         _reclaim_output_queues()
@@ -602,7 +602,7 @@ def get_output(session_id):
                 del context.user_last_read[session_id]
 
         if inference_config.frontend_debug_mode:
-            with open(f"server_logs/user_{session_id}.txt", "a") as f:
+            with open(f"{api_log_dir}/user_{session_id}.txt", "a") as f:
                 f.write(out_text)
 
         yield out_text
@@ -638,7 +638,7 @@ def handle_inference(prompt, params, user_session_id):
 
     if inference_config.frontend_debug_mode:
         # Log user's prompt
-        with open(f"server_logs/prompt_{session_id}.txt", "a") as f:
+        with open(f"{api_log_dir}/prompt_{session_id}.txt", "a") as f:
             f.write("Prompt:\n" + prompt + "\n")
 
     return session_id, error
@@ -712,8 +712,8 @@ def global_backend_init():
     global backend_initialized
     if not backend_initialized:
         # Create server log directory
-        if not os.path.exists("server_logs"):
-            os.makedirs("server_logs")
+        if not os.path.exists(api_log_dir):
+            os.makedirs(api_log_dir)
         override_args = get_backend_override_args()
         initialize_decode_backend(override_args)
         backend_initialized = True

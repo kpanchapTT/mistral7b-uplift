@@ -4,13 +4,17 @@ import random
 from argparse import ArgumentParser
 from multiprocessing import Queue
 from time import sleep, time
+import traceback
 
 import torch
 import torch.nn.functional as F
-from decode_v0 import load_model_and_tokenizer
-from pybudify40 import PyBudify
-from transformers.generation.utils import top_k_top_p_filtering
 
+if not os.environ.get("MOCK_MODEL"):
+    from decode_v0 import load_model_and_tokenizer
+    from pybudify40 import PyBudify
+    from transformers.generation.utils import top_k_top_p_filtering
+
+from inference_config import inference_config
 
 class DecodeBackend:
     class UserInfo:
@@ -28,6 +32,10 @@ class DecodeBackend:
             self.return_prompt = params["return_prompt"]
             self.cancel = False
             self.stop_sequence = None
+            # Create backend log dir
+            self.backend_log_dir = os.path.join(inference_config.log_cache, "backend_logs")
+            if not os.path.exists(self.backend_log_dir):
+                os.mkdir(self.backend_log_dir)
             if params.get("stop_sequence"):
                 self.stop_sequence = tokenizer(params.get("stop_sequence")).input_ids[0]
 
@@ -55,12 +63,10 @@ class DecodeBackend:
 
         # load model and tokenizer
         self.model, self.tokenizer = self.load_model_and_tokenizer(args)
-
         self.tokenizer.pad_token_id = 0
 
         # kv_cache
         self.past_key_values = self._init_kv_cache()  # TODO implement this
-
         self._post_init_pybudify(args)
 
         # decode backend status
@@ -74,7 +80,7 @@ class DecodeBackend:
 
         if self.verbose:
             # Log all initialization
-            with open("backend_logs/decode_backend.txt", "a") as f:
+            with open(f"{self.self.backend_log_dir}/decode_backend.txt", "a") as f:
                 f.write("\n\n" + "=" * 20 + "\n")
                 f.write("Decode Backend Initialized\n")
                 f.write("=" * 20 + "\n\n")
@@ -89,7 +95,6 @@ class DecodeBackend:
         ext_past_kv = []
         # past_key_values is a tuple of [key, value] tensors, one for each layer
         # copy into the right parts of the key, value tensors
-
         for _ in range(self.num_layers):
             past_key = torch.zeros(
                 (self.max_users, 8, self.seqlen, 64), dtype=torch.bfloat16
@@ -123,7 +128,6 @@ class DecodeBackend:
                 new_past_key_values.append(layer_ks + layer_vs)
 
             past_key_values = tuple(new_past_key_values)
-
         return past_key_values
 
     def _post_init_pybudify(self, args):
@@ -225,9 +229,9 @@ class DecodeBackend:
             idx = self._find_free_user_slot()
             self.users[idx] = user_info
             if self.verbose:
-                with open(f"backend_logs/{user_id}.txt", "a") as f:
+                with open(f"{self.self.backend_log_dir}/{user_id}.txt", "a") as f:
                     f.write("\n<Prompt>: " + prompt + "\n")
-                with open("backend_logs/decode_backend.txt", "a") as f:
+                with open(f"{self.self.backend_log_dir}/decode_backend.txt", "a") as f:
                     f.write(
                         f"Added user {user_id} to slot {idx} with prompt: {prompt}\n"
                     )
@@ -305,7 +309,7 @@ class DecodeBackend:
 
         if self.verbose:
             torch.set_printoptions(threshold=10000)
-            with open("backend_logs/decode_backend.txt", "a") as f:
+            with open(f"{self.self.backend_log_dir}/decode_backend.txt", "a") as f:
                 f.write(f"\nprepare_inputs()\n")
                 f.write(f"input_ids: {self.input_ids}\n")
                 f.write(f"position_ids: {self.position_ids}\n")
@@ -391,7 +395,7 @@ class DecodeBackend:
         self.input_ids = output_tokens.view(1, self.max_users)
 
         if self.verbose:
-            with open("backend_logs/decode_backend.txt", "a") as f:
+            with open(f"{self.self.backend_log_dir}/decode_backend.txt", "a") as f:
                 f.write(f"\ndecode()\n")
                 f.write(f"outputs: {self.input_ids}\n")
                 f.write(
@@ -423,7 +427,7 @@ class DecodeBackend:
         self.input_ids = output_ids
 
         if self.verbose:
-            with open("backend_logs/decode_backend.txt", "a") as f:
+            with open(f"{self.self.backend_log_dir}/decode_backend.txt", "a") as f:
                 f.write(f"\nswitch_tokens()\n")
                 f.write(f"outputs: {self.input_ids}\n")
                 f.write(
@@ -452,9 +456,9 @@ class DecodeBackend:
 
             if self.verbose:
                 # Log user's output
-                with open(f"backend_logs/{self.users[i].user_id}.txt", "a") as f:
+                with open(f"{self.self.backend_log_dir}/{self.users[i].user_id}.txt", "a") as f:
                     f.write(return_text)
-                with open("backend_logs/decode_backend.txt", "a") as f:
+                with open(f"{self.self.backend_log_dir}/decode_backend.txt", "a") as f:
                     f.write(f"\npush_outputs()\n")
                     f.write(
                         f"pushing user_id: {self.users[i].user_id}, data: {return_text}\n"
@@ -467,7 +471,7 @@ class DecodeBackend:
             token_text = self.tokenizer.decode(token, clean_up_tokenization_spaces=True)
             if token_text == self.tokenizer.eos_token:
                 if self.verbose:
-                    with open(f"backend_logs/decode_backend.txt", "a") as f:
+                    with open(f"{self.self.backend_log_dir}/decode_backend.txt", "a") as f:
                         f.write(
                             f"\nEvicted user_id: {self.users[i].user_id} from index {i} in user list\n"
                         )
@@ -499,7 +503,7 @@ class DecodeBackend:
         """
         while True:
             if self.verbose:
-                with open("backend_logs/decode_backend.txt", "a") as f:
+                with open(f"{self.self.backend_log_dir}/decode_backend.txt", "a") as f:
                     f.write(f"\nLOOP ITERATION {self.num_steps}\n")
             self.pick_prompts(prompt_q)  # we update to self.users
             self.prepare_inputs()
@@ -531,18 +535,22 @@ def batch_top_pk_logits_efficient(
     return torch.concat(out_tokens)
 
 
-def run_decode_backend(prompt_q, output_q, status_q, arg_overrides, verbose=False):
+def run_decode_backend(prompt_q, output_q, status_q, arg_overrides, verbose=True):
     args = parse_args(arg_overrides)
-
-    # Create backend log dir
-    if not os.path.exists("backend_logs"):
-        os.mkdir("backend_logs")
-
     with torch.no_grad():
         # initialization
         decode_be = DecodeBackend(args, verbose=verbose)
         # run generate
-        decode_be.run_generate(prompt_q, output_q, status_q)
+        try:
+            decode_be.run_generate(prompt_q, output_q, status_q)
+        except Exception as e:
+            # Capture the stack trace
+            stack_trace = traceback.format_exc()
+            # write the stack trace to the specified output file
+            with open(f"{decode_be.backend_log_dir}/stack_trace", 'w') as f:
+                f.write(stack_trace)
+            # Re-raise the exception if you want the process to exit with an error
+            raise e
 
 
 def parse_args(inp=None):
