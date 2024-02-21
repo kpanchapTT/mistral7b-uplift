@@ -1,0 +1,27 @@
+version: '3.8'
+services:
+  swagger-ui:
+    image: swaggerapi/swagger-ui
+    ports:
+      - "8080:8080"
+    environment:
+      - SWAGGER_JSON=/mnt/openapi/tenstorrent_llm_openapi_v3.json
+    volumes:
+      - ./docs/openapi:/mnt/openapi
+
+  project-falcon:
+    image: ghcr.io/tenstorrent/project-falcon:v0.0.16
+    platform: linux/x86_64
+    ports:
+      - "1223:1223"
+    environment:
+      - MOCK_MODEL=1  # mock out model
+      - FALCON_40B_2LAYER=1  # running full 60L version, init_kv_cache may OOM
+      - MODEL_WEKA_DIR=/mnt/local_weka_mock  # use for server_logs in local testing
+      - JWT_SECRET=test-secret-456
+    volumes:
+      - ./inference-api:/mnt/inference-api
+      - ./scripts:/mnt/scripts
+      - ./run_inference_api.sh:/mnt/run_inference_api.sh
+      - ./local_weka_mock:/mnt/local_weka_mock
+    command: ["bash"]

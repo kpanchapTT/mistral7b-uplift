@@ -1,0 +1,60 @@
+# Code from pybuda release pipeline: https://yyz-gitlab.local.tenstorrent.com/tenstorrent/pybuda/-/blob/cdbd30a6ddb4ac9d2c27450dae5ad9c129018e9d/ci/deployment
+#############################################
+FROM ubuntu:20.04 AS pybuda-base
+
+RUN apt-get update
+
+#############################################
+##  Buda Backend Dependencies
+#############################################
+RUN apt-get install -y software-properties-common
+RUN add-apt-repository -y ppa:rosecompiler/rose-development
+RUN apt-get install -y rose rose-tools ruby libgoogle-glog-dev python3.8-venv
+RUN apt-get install -y build-essential clang-6.0 libhdf5-serial-dev
+RUN apt-get install -y python3-pip libzmq3-dev
+RUN apt-get install -y python-is-python3
+RUN apt-get install -y pciutils
+
+RUN pip3 install pyzmq tabulate
+
+#############################################
+# project-falcon specific
+#############################################
+# additonal dependencies:
+# libyaml-cpp0.6: for pybuda
+# rsync: to save .tti
+RUN apt-get update && apt-get install -y libyaml-cpp0.6 rsync
+
+ARG APP_DIR=/falcon40b-demo
+ARG HOME_DIR=/home/user
+
+## setup user
+RUN useradd -u 1000 -s /bin/bash user
+
+# add user to sudoers
+RUN apt-get install -y sudo \
+    && echo "user ALL=(root) NOPASSWD:ALL" > /etc/sudoers.d/user \
+    && chmod 0440 /etc/sudoers.d/user
+
+WORKDIR "${HOME_DIR}/${APP_DIR}"
+
+COPY "inference-api" "${HOME_DIR}/${APP_DIR}/inference-api"
+COPY "requirements_minimal.txt" "${HOME_DIR}/${APP_DIR}/"
+COPY "run_inference_api.sh" "${HOME_DIR}/${APP_DIR}/"
+
+RUN chown -R user:user "${HOME_DIR}"
+# BBE writes files here
+# RUN chown -R user:user "/usr/local/lib/python3.8/dist-packages/budabackend"
+
+# debug tools
+RUN apt-get update && apt-get install -y vim tmux curl htop zip unzip
+
+RUN pip3 install -r "requirements_minimal.txt" --default-timeout=120
+
+# cleanup
+RUN rm -rf /var/lib/apt/lists/* \
+    && rm -rf /tmp/install
+
+USER user
+# CMD ["bash", "run_inference_api.sh"]
+ENTRYPOINT sleep infinity

@@ -13,5 +13,11 @@ PROXY_LOG_FILE="${MODEL_WEKA_DIR}/logs/proxy_${START_DATETIME}.log"
 echo "starting proxy, logging output to: ${PROXY_LOG_FILE}"
 python inference-api/proxy.py > ${PROXY_LOG_FILE} 2>&1 &
 
-echo "starting inference_api_server, logging output to: ${SERVER_LOG_FILE}"
-gunicorn --config gunicorn.conf.py > ${SERVER_LOG_FILE} 2>&1 &
+if [[ -n "${MOCK_MODEL}" ]]; then
+    echo "WARNING: this is a development server with a mocked out model."
+    echo "starting _mock_inference_api_server.py, logging output to: ${SERVER_LOG_FILE}"
+    python inference-api/_mock_inference_api_server.py > ${SERVER_LOG_FILE} 2>&1 &
+else
+    echo "starting inference_api_server.py, logging output to: ${SERVER_LOG_FILE}"
+    gunicorn --config inference-api/gunicorn.conf.py > ${SERVER_LOG_FILE} 2>&1 &
+fi
