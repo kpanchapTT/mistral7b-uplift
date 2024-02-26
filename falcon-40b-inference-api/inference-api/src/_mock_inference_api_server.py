@@ -20,7 +20,7 @@ This allows for rapid testing of the server and backend implementation.
 
 def mock_decoder(self):
     # mock with repeating previous token
-    tps = 3  # simulate a given tokens per second per user
+    tps = 3000  # simulate a given tokens per second per user
     sleep(1 / tps)
     output_tokens = self.input_ids[-1].unsqueeze(0)
     # if user has hit max_length, send eos token
@@ -81,8 +81,6 @@ def create_test_server():
 if __name__ == "__main__":
     app = create_test_server()
     app.run(
-        debug=True,
         port=inference_config.backend_server_port,
         host="0.0.0.0",
-        use_reloader=False,
     )

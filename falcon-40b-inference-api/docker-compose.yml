@@ -5,23 +5,64 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - SWAGGER_JSON=/mnt/openapi/tenstorrent_llm_openapi_v3.json
+      - SWAGGER_JSON=/mnt/openapi/local/local_tenstorrent_llm_openapi_v3.json
     volumes:
       - ./docs/openapi:/mnt/openapi
+    networks:
+      - local_network
 
-  project-falcon:
-    image: ghcr.io/tenstorrent/project-falcon:v0.0.16
+  local-inference-api:
+    # image: ghcr.io/tenstorrent/project-falcon:v0.0.16
+    build:
+      context: ./inference-api
+      dockerfile: Dockerfile-local
+    image: project-falcon/falcon40b-demo:v0.0.17-local
     platform: linux/x86_64
-    ports:
-      - "1223:1223"
+    # ports are only exposed if you want to test an external service
+    # use docker-compose internal locak_network for inter-container networking
+    # ports:
+    #   - "1223:1223"  # inference-api
+    #   - "7000:7000"  # reverse proxy with JWT Authrization
     environment:
       - MOCK_MODEL=1  # mock out model
       - FALCON_40B_2LAYER=1  # running full 60L version, init_kv_cache may OOM
       - MODEL_WEKA_DIR=/mnt/local_weka_mock  # use for server_logs in local testing
       - JWT_SECRET=test-secret-456
+      - FLASK_SECRET=flask-secret-8904873
     volumes:
-      - ./inference-api:/mnt/inference-api
+      - ./inference-api/src:/mnt/src
       - ./scripts:/mnt/scripts
-      - ./run_inference_api.sh:/mnt/run_inference_api.sh
-      - ./local_weka_mock:/mnt/local_weka_mock
-    command: ["bash"]
+      - ./inference-api/run_inference_api.sh:/mnt/run_inference_api.sh
+      - ./inference-api/local_weka_mock:/mnt/local_weka_mock
+    command: ["bash", "/mnt/run_inference_api.sh"]
+    networks:
+      - local_network
+
+  conversation-api:
+    build:
+      context: ./conversation-api
+      dockerfile: Dockerfile
+    image: project-falcon/conversation-api:v0.0.1
+    platform: linux/x86_64
+    # ports are only exposed if you want to test an external service
+    # use docker-compose internal locak_network for inter-container networking
+    # ports:
+    #   - "1223:1223"  # inference-api
+    #   - "7000:7000"  # reverse proxy with JWT Authrization
+    environment:
+        - TT_API_KEY="asd"
+        - TT_API_URL="asd"
+        - FLASK_SECRET=flask-secret-8904873
+    volumes:
+      - ./conversation-api/src:/mnt/src
+    # command: ["python", "-u", "/app/src/conversation_api_server.py"]
+    command: ["sh", "/app/run_conversation_api.sh"]
+    networks:
+      - local_network
+
+  # conversation-api:
+
+
+networks:
+  local_network:
+    driver: bridge

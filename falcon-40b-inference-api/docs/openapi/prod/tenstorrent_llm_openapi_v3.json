@@ -1,8 +1,8 @@
 {
     "openapi": "3.0.1",
     "info": {
-        "title": "Customer Inference API",
-        "description": "Customer Inference API",
+        "title": "Tenstorrent Inference API",
+        "description": "Tenstorrent Inference API",
         "version": "1.0"
     },
     "servers": [

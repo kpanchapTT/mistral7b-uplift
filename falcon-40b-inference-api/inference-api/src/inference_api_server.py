@@ -724,6 +724,10 @@ def create_server():
     return app
 
 
-if __name__ == "__main__":
-    app = create_server()
-    app.run(debug=False, port=inference_config.backend_server_port, host="0.0.0.0")
+# if __name__ == "__main__":
+#     app = create_server()
+#     app.run(
+#         port=inference_config.backend_server_port,
+#         host="127.0.0.1"
+#         # debug=False,
+#     )

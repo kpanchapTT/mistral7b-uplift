@@ -97,7 +97,7 @@ By default Docker containers have access to all of the host's CPU cores and RAM.
 Here is an example mapping the resources to the docker container from a BM host connected to a galaxy, this is a similar configuration to how cloud k8s variables would be set:
 
 ```bash
-sudo docker run --rm -ti \
+docker run --rm -ti \
     --shm-size=4g \
     --device /dev/tenstorrent \
     -p 1223:1223 \
@@ -164,8 +164,10 @@ docker exec -it $CONTAINER_ID bash
 
 ### Docker Compose
 
+On first run you will need to build the local images via ` docker-compose up --build`, then you can run via:
 ```bash
-docker-compose up
+# on first run, docker-compose up --build
+docker compose up 
 ```
 
 # Documentation 

@@ -25,7 +25,7 @@ RUN pip3 install pyzmq tabulate
 # rsync: to save .tti
 RUN apt-get update && apt-get install -y libyaml-cpp0.6 rsync
 
-ARG APP_DIR=/falcon40b-demo
+ARG APP_DIR=falcon40b-demo
 ARG HOME_DIR=/home/user
 
 ## setup user
@@ -38,23 +38,30 @@ RUN apt-get install -y sudo \
 
 WORKDIR "${HOME_DIR}/${APP_DIR}"
 
-COPY "inference-api" "${HOME_DIR}/${APP_DIR}/inference-api"
-COPY "requirements_minimal.txt" "${HOME_DIR}/${APP_DIR}/"
-COPY "run_inference_api.sh" "${HOME_DIR}/${APP_DIR}/"
-
-RUN chown -R user:user "${HOME_DIR}"
-# BBE writes files here
-# RUN chown -R user:user "/usr/local/lib/python3.8/dist-packages/budabackend"
-
 # debug tools
 RUN apt-get update && apt-get install -y vim tmux curl htop zip unzip
 
-RUN pip3 install -r "requirements_minimal.txt" --default-timeout=120
+COPY "src" "${HOME_DIR}/${APP_DIR}/src"
+COPY "requirements_local.txt" "${HOME_DIR}/${APP_DIR}/"
+COPY "run_inference_api.sh" "${HOME_DIR}/${APP_DIR}/"
+
+RUN chown -R user:user "${HOME_DIR}" \
+    && chmod +x  "${HOME_DIR}/${APP_DIR}/run_inference_api.sh"
+# BBE writes files here
+# RUN chown -R user:user "/usr/local/lib/python3.8/dist-packages/budabackend"
+
+RUN pip3 install -r "requirements_local.txt" --default-timeout=120
 
 # cleanup
 RUN rm -rf /var/lib/apt/lists/* \
     && rm -rf /tmp/install
 
 USER user
-# CMD ["bash", "run_inference_api.sh"]
-ENTRYPOINT sleep infinity
+# note: When both ENTRYPOINT and CMD are specified, the CMD line provides 
+# additional default arguments to the ENTRYPOINT.
+# If ENTRYPOINT is specified in the Dockerfile, then docker-compose.yml command
+# values are similarly passed as additional arguments to the ENTRYPOINT.
+# For this reason CMD is used here instead of ENTRYPOINT.
+#   - `docker compose up`: will use the main runtime command
+#   - `docker run`: will allow for 
+CMD sleep infinity
