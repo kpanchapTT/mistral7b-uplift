@@ -3,7 +3,7 @@ FROM alpine:latest
 # Install Python.
 # If you need a specific Python version, specify python3=<version>.
 RUN apk update && \
-    apk add --no-cache python3 py3-pip
+    apk add --no-cache --update python3 py3-pip curl
     # && apk add --no-cache --virtual .build-deps gcc python3-dev musl-dev libffi-dev \
     # && apk add --no-cache g++ make gfortran openblas-dev
 
@@ -24,5 +24,4 @@ RUN pip install --break-system-packages --no-cache-dir -r /app/requirements.txt
 # Set up work directory
 WORKDIR ${APP_DIR}
 
-# Run app.py when the container launches
 CMD sleep infinity

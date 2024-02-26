@@ -6,6 +6,7 @@ services:
       - "8080:8080"
     environment:
       - SWAGGER_JSON=/mnt/openapi/local/local_tenstorrent_llm_openapi_v3.json
+      - WITH_CREDENTIALS=true  # need for swagger-ui to send session cookie
     volumes:
       - ./docs/openapi:/mnt/openapi
     networks:
@@ -20,9 +21,9 @@ services:
     platform: linux/x86_64
     # ports are only exposed if you want to test an external service
     # use docker-compose internal locak_network for inter-container networking
-    # ports:
-    #   - "1223:1223"  # inference-api
-    #   - "7000:7000"  # reverse proxy with JWT Authrization
+    ports:
+      - "1223:1223"  # reverse proxy with JWT Authrization
+      - "7000:7000"  # inference-api
     environment:
       - MOCK_MODEL=1  # mock out model
       - FALCON_40B_2LAYER=1  # running full 60L version, init_kv_cache may OOM
@@ -46,12 +47,12 @@ services:
     platform: linux/x86_64
     # ports are only exposed if you want to test an external service
     # use docker-compose internal locak_network for inter-container networking
-    # ports:
-    #   - "1223:1223"  # inference-api
-    #   - "7000:7000"  # reverse proxy with JWT Authrization
+    ports:
+      - "7001:7001"  # make conversation-api available to swagger-ui
     environment:
-        - TT_API_KEY="asd"
-        - TT_API_URL="asd"
+        # these are test evariables ONLY
+        - TT_API_JWT=Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0ZWFtX2lkIjoidGVuc3RvcnJlbnQiLCJ0b2tlbl9pZCI6ImRlYnVnLXRlc3QifQ.LZeuFMVFzgxD91sDR79qlfDogPHUCG9lLopctYKYvnI
+        - TT_FALCON_40B_INFERENCE_API_URL=http://local-inference-api:7000/inference/falcon40b
         - FLASK_SECRET=flask-secret-8904873
     volumes:
       - ./conversation-api/src:/mnt/src
@@ -59,9 +60,6 @@ services:
     command: ["sh", "/app/run_conversation_api.sh"]
     networks:
       - local_network
-
-  # conversation-api:
-
 
 networks:
   local_network:

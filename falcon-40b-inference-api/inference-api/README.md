@@ -38,6 +38,7 @@ docker exec -it $(docker ps | grep "${IMAGE_NAME}" | awk '{print $1}') bash
 Kill the inference API server that was started by container, run your own modified version:
 ```bash 
 # kill with SIGINT PID of process running on 7000 (inference API server), can verify process is terminated with `ps -e`
+sudo apt update && sudo apt install lsof
 kill -15 $(lsof -i :7000 | awk 'NR>1 {print $2}')
-python -u /mnt/inference-api/_mock_inference_api_server.py
+python -u /mnt/src/_mock_inference_api_server.py
 ```

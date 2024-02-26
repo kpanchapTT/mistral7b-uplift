@@ -3,7 +3,8 @@
 from typing import OrderedDict, List, Optional, Any, Dict
 import collections
 
-class ConversationMemory():
+
+class ConversationMemory:
     """
     A memory class that stores conversation history.
     """
@@ -32,7 +33,9 @@ class ConversationMemory():
         window_size = kwargs.get("window_size", None)
 
         if window_size is not None:
-            chat_list = self.list[-window_size:]  # pylint: disable=invalid-unary-operand-type
+            chat_list = self.list[
+                -window_size:
+            ]  # pylint: disable=invalid-unary-operand-type
         else:
             chat_list = self.list
 

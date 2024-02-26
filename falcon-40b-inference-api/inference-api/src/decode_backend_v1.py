@@ -25,8 +25,14 @@ class DecodeBackend:
             tokenized = tokenizer(
                 prompt, padding="max_length", return_tensors="pt", max_length=2048
             )
+            # remove any EOS tokens for input
+            tokenized.input_ids = tokenized.input_ids[tokenized.input_ids != tokenizer.eos_token_id]
+            # pad back to 2048 tokens
+            tokenized.input_ids = F.pad(tokenized.input_ids, (0, 2048-tokenized.input_ids.size(0)), 'constant', 0)
+
             self.prompt_tokens = tokenized.input_ids.clone().squeeze()  # (2048,)
             self.prompt_length = torch.sum(tokenized.attention_mask).item()  # int
+
             self.generation_params = params
             self.max_tokens = params["max_tokens"]
             self.return_prompt = params["return_prompt"]

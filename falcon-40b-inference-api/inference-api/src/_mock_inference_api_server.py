@@ -79,7 +79,16 @@ def create_test_server():
 
 
 if __name__ == "__main__":
+    from flask_cors import CORS
+
+
     app = create_test_server()
+    # CORS for swagger-ui local testing
+    CORS(
+        app,
+        supports_credentials=True,
+        resources={r"/predictions/*": {"origins": "http://localhost:8080"}},
+    )
     app.run(
         port=inference_config.backend_server_port,
         host="0.0.0.0",
