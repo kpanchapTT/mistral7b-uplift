@@ -32,3 +32,8 @@ The editted `swagger-initializer.js` to host `tenstorrent_llm_openapi_v3.json` a
 Caching may exist at:
 1. Browser level: delete cached data from `tenstorrent.com` to remove cache
 2. CDN CloudFront: disable in caching policy, or add invalidation for `/docs/*` (this is disabled for AWS DEV CloudFront)
+
+
+```bash
+docker exec -it $(docker ps | grep "swaggerapi/swagger-ui" | awk '{print $1}') sh
+```

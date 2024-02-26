@@ -85,6 +85,11 @@ If running on a macbook or non x86_64 platform use the `--platform flag`:
 docker build -t project-falcon/falcon40b-demo:1.0.0 --platform=linux/x86_64 .
 ```
 
+Alternatively, for local testing
+```bash
+docker build -t project-falcon/falcon40b-demo:v0.0.16-local --platform=linux/x86_64 -f Dockerfile-local .
+```
+
 ## Running docker images
 
 By default Docker containers have access to all of the host's CPU cores and RAM.
@@ -92,7 +97,7 @@ By default Docker containers have access to all of the host's CPU cores and RAM.
 Here is an example mapping the resources to the docker container from a BM host connected to a galaxy, this is a similar configuration to how cloud k8s variables would be set:
 
 ```bash
-sudo docker run --rm -ti \
+docker run --rm -ti \
     --shm-size=4g \
     --device /dev/tenstorrent \
     -p 1223:1223 \
@@ -126,16 +131,43 @@ docker run \
     --rm \
     --platform=linux/x86_64 \
     -ti \
-    -v ${PWD}:
-    -e MODEL_WEKA_DIR=1 \
+    -v ${PWD}:/mnt \
+    -e MOCK_MODEL=1 \
+    -e MODEL_WEKA_DIR=/mnt/local_weka_mock \
     -e JWT_SECRET=test-secret-456 \
     ghcr.io/tenstorrent/project-falcon:v0.0.16 bash
 ```
+
+Alternatively run the local-only Docker container without pybuda.
+
+```bash
+docker run \
+    --rm \
+    --platform=linux/x86_64 \
+    -ti \
+    -v ${PWD}:/mnt \
+    -e FALCON_40B_2LAYER='1' \
+    -e MOCK_MODEL=1 \
+    -e MODEL_WEKA_DIR=/mnt/local_weka_mock \
+    -e JWT_SECRET=test-secret-456 \
+    project-falcon/falcon40b-demo:v0.0.16-local bash
+```
+
+NOTE: unless FALCON_40B_2LAYER='1' is set, attempting to init KV cache for all 60 layers may cause python process in container to run out of RAM and kill the process.
+
 
 To run a shell inside the container:
 ```bash
 docker ps -a
 docker exec -it $CONTAINER_ID bash
+```
+
+### Docker Compose
+
+On first run you will need to build the local images via ` docker-compose up --build`, then you can run via:
+```bash
+# on first run, docker-compose up --build
+docker compose up 
 ```
 
 # Documentation 
@@ -258,3 +290,4 @@ curl ${LLM_CHAT_API_URL} -H "Content-Type: application/json" \
 ```bash
 rm -rf .hlkc_cache/ .pkl_memoize_py3/ generated_modules/ tt_build/
 ```
+

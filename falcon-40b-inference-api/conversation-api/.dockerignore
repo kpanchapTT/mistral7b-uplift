@@ -1,0 +1,7 @@
+# ignore everything by default
+*
+# explictly include files:
+!Dockerfile
+!src
+!requirements.txt
+!run_conversation_api.sh

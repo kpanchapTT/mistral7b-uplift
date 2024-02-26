@@ -57,7 +57,7 @@ RUN apt-get install -y sudo \
 
 WORKDIR "${HOME_DIR}/${APP_DIR}"
 
-COPY "inference-api" "${HOME_DIR}/${APP_DIR}/inference-api"
+COPY "src" "${HOME_DIR}/${APP_DIR}/src"
 COPY "requirements.txt" "${HOME_DIR}/${APP_DIR}/"
 COPY "run_inference_api.sh" "${HOME_DIR}/${APP_DIR}/"
 
@@ -81,4 +81,4 @@ RUN rm -rf /var/lib/apt/lists/* \
 
 USER user
 # CMD ["bash", "run_inference_api.sh"]
-ENTRYPOINT sleep infinity
+CMD sleep infinity

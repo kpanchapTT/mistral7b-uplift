@@ -20,7 +20,7 @@ This allows for rapid testing of the server and backend implementation.
 
 def mock_decoder(self):
     # mock with repeating previous token
-    tps = 3  # simulate a given tokens per second per user
+    tps = 3000  # simulate a given tokens per second per user
     sleep(1 / tps)
     output_tokens = self.input_ids[-1].unsqueeze(0)
     # if user has hit max_length, send eos token
@@ -55,14 +55,14 @@ def mock_post_init_pybudify(self, args):
 
 
 backend_initialized = False
-
+api_log_dir = os.path.join(inference_config.log_cache, "api_logs")
 
 def global_backend_init():
     global backend_initialized
     if not backend_initialized:
         # Create server log directory
-        if not os.path.exists("server_logs"):
-            os.makedirs("server_logs")
+        if not os.path.exists(api_log_dir):
+            os.makedirs(api_log_dir)
         override_args = get_backend_override_args()
         initialize_decode_backend(override_args)
         backend_initialized = True
@@ -79,10 +79,17 @@ def create_test_server():
 
 
 if __name__ == "__main__":
+    from flask_cors import CORS
+
+
     app = create_test_server()
+    # CORS for swagger-ui local testing
+    CORS(
+        app,
+        supports_credentials=True,
+        resources={r"/predictions/*": {"origins": "http://localhost:8080"}},
+    )
     app.run(
-        debug=True,
         port=inference_config.backend_server_port,
         host="0.0.0.0",
-        use_reloader=False,
     )
