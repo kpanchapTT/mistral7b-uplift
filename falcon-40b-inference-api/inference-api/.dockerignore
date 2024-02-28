@@ -3,7 +3,6 @@
 # explictly include files:
 !Dockerfile
 !src
-!run_inference_api.sh
 !pybuda-0.1.231113+dev.wh.b0.cdbd30a-cp38-cp38-linux_x86_64.whl
 !tvm-0.9.0+dev.tt.c2076affc-cp38-cp38-linux_x86_64.whl
 !requirements.txt

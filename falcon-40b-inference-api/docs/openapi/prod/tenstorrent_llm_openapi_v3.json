@@ -64,7 +64,7 @@
                         "description": "Unauthorized"
                     },
                     "500": {
-                        "description": "Internal Server Error, this is default for unhandled exceptions, as defined in backend server and reverse proxy."
+                        "description": "Internal Server Error, this is default for unhandled exceptions, as defined in backend server."
                     },
                     "503": {
                         "description": "Service Unavailable, returns `{'message': 'Service overloaded, try again later.'}`"

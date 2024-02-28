@@ -4,9 +4,12 @@ from threading import Lock
 import collections
 import json
 from datetime import timedelta
+from typing import Optional
 
 import requests
-from flask import Flask, Response, jsonify, request, session
+import jwt
+from flask import Flask, Response, request, session, abort
+
 
 from conversation_memory import ConversationMemory
 from conversation_config import conversation_config
@@ -16,8 +19,12 @@ app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET", "test-secret-83492")
 # set lifetime of the session cookie
 app.permanent_session_lifetime = timedelta(minutes=15)
-TT_API_KEY = os.getenv("TT_API_KEY", None)
-TT_FALCON_40B_INFERENCE_API_URL = os.getenv("TT_FALCON_40B_INFERENCE_API_URL", None)
+
+HTTP_OK = 200
+HTTP_BAD_REQUEST = 400
+HTTP_UNAUTHORIZED = 401
+HTTP_INTERNAL_SERVER_ERROR = 500
+HTTP_SERVICE_UNAVAILABLE = 503
 
 
 class Context:
@@ -64,21 +71,54 @@ def get_conversation_state(prompt, session_id):
     return state
 
 
-# def read_authorization(self) -> Optional[dict]:
-#     [scheme, parameters] = normalize_token(self.headers.get("authorization", ""))
-#     if scheme != "bearer":
-#         self.log_error(f"Authorization scheme was '{scheme}' instead of bearer")
-#         return None
-#     try:
-#         payload = jwt.decode(parameters, self.jwt_secret, algorithms=["HS256"])
-#         return payload
-#     except InvalidTokenError as exc:
-#         self.log_error(f"JWT payload decode error: {exc}")
-#         return None
+def normalize_token(token) -> [str, str]:
+    """
+    Note that scheme is case insensitive for the authorization header.
+    See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Authorization#directives
+    """  # noqa: E501
+    one_space = " "
+    words = token.split(one_space)
+    scheme = words[0].lower()
+    return [scheme, " ".join(words[1:])]
+
+
+def read_authorization(
+    headers,
+) -> Optional[dict]:
+    authorization = headers.get("authorization")
+    if not authorization:
+        abort(HTTP_UNAUTHORIZED, description="Must provide Authorization header.")
+    [scheme, parameters] = normalize_token(authorization)
+    if scheme != "bearer":
+        user_error_msg = f"Authorization scheme was '{scheme}' instead of bearer"
+        abort(HTTP_UNAUTHORIZED, description=user_error_msg)
+    try:
+        payload = jwt.decode(parameters, os.getenv("JWT_SECRET"), algorithms=["HS256"])
+        if not payload:
+            abort(HTTP_UNAUTHORIZED)
+        return payload
+    except jwt.InvalidTokenError as exc:
+        user_error_msg = f"JWT payload decode error: {exc}"
+        abort(HTTP_BAD_REQUEST, description=user_error_msg)
+
+
+def handle_internal_api_errors(res):
+    # send internal inference API errors to user
+    if res.status_code != HTTP_OK:
+        if res.status_code == HTTP_UNAUTHORIZED:
+            # if the internal inference API authorization is broken, backend fix is required
+            abort(
+                HTTP_SERVICE_UNAVAILABLE,
+                "Internal service issue is under investigation ...",
+            )
+        else:
+            # all other errors can be passed through to user
+            abort(res.status_code, description=res.content)
 
 
 @app.route("/conversation/falcon-40b-instruct", methods=["POST"])
 def chat():
+    _ = read_authorization(request.headers)
     json_data = json.loads(request.data.decode())
     prompt = json_data["text"]
     if "session_id" not in session:
@@ -92,7 +132,6 @@ def chat():
 
     # remove EOS token to avoid issues with deployed inference API
     conversation_state = conversation_state.replace("<|endoftext|>", "")
-    print(f"sending: {conversation_state}")
     json_data["text"] = conversation_state
     session_id = session["session_id"]
 
@@ -100,15 +139,16 @@ def chat():
     headers = {
         "accept": "*/*",
         "Content-Type": "application/json",
-        "Authorization": TT_API_KEY,
+        "Authorization": os.getenv("TT_API_JWT", None),
     }
     res = requests.post(
-        TT_FALCON_40B_INFERENCE_API_URL,
+        conversation_config.tt_falcon_40b_inference_api_url,
         data=json.dumps(json_data),
         headers=headers,
         stream=True,
         timeout=600,
     )
+    handle_internal_api_errors(res)
     return Response(
         process_response(res, session_id, prompt=prompt),
         content_type="text/event-stream",
@@ -116,11 +156,11 @@ def chat():
 
 
 def create_server():
-    global app
+    print("Starting converstaion API server ...")
     return app
 
 
-if __name__ == "__main__":
+def create_test_server():
     from flask_cors import CORS
 
     app = create_server()
@@ -130,4 +170,9 @@ if __name__ == "__main__":
         supports_credentials=True,
         resources={r"/conversation/*": {"origins": "http://localhost:8080"}},
     )
+    return app
+
+
+if __name__ == "__main__":
+    app = create_test_server()
     app.run(debug=False, port=conversation_config.backend_server_port, host="0.0.0.0")

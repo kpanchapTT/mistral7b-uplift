@@ -9,17 +9,29 @@ import time
 import uuid
 import json
 from threading import Lock
+from typing import Optional
 
-from flask import Flask, Response, jsonify, request, session
+import jwt
+from flask import Flask, Response, request, session, abort
 
 sys.path.append(os.getcwd())
 
 from decode_backend_v1 import run_decode_backend
 from inference_config import inference_config
+from inference_logger import get_logger
+
+logger = get_logger(__name__)
+logger.info(f"importing {__name__}")
+logger.info(json.dumps(inference_config._asdict(), indent=4))
 
 app = Flask(__name__)
-app.secret_key = "your_secret_key"
+app.secret_key = os.getenv("FLASK_SECRET", "test-app-secret")
 INIT_ID = "COMPILE-INITIALIZATION"
+
+HTTP_BAD_REQUEST = 400
+HTTP_UNAUTHORIZED = 401
+HTTP_INTERNAL_SERVER_ERROR = 500
+HTTP_SERVICE_UNAVAILABLE = 503
 
 
 class Context:
@@ -49,6 +61,7 @@ context = Context()
 time_last_response = time.time()
 time_last_response_lock = Lock()
 api_log_dir = os.path.join(inference_config.log_cache, "api_logs")
+
 
 def get_falcon40b_backend_overrides(
     use_60_layers=True,
@@ -294,12 +307,12 @@ def get_falcon40b_backend_overrides(
 
 def get_backend_override_args():
     # terminate env vars and pass to switching logic with simple logging
-    use_2_layers = os.environ.get("FALCON_40B_2LAYER") == "1"
-    pytorch_no_weights = os.environ.get("FALCON_40B_PYTORCH_NO_WEIGHTS") == "1"
-    save_tti = os.environ.get("FALCON_40B_SAVE") == "1"
-    load_tti = os.environ.get("FALCON_40B_LOAD") == "1"
-    log_level_debug = os.environ.get("FALCON_40B_LOG_LEVEL_DEBUG") == "1"
-    tti_suffix = os.environ.get("FALCON_40B_TTI_SUFFIX", "v0")
+    use_2_layers = inference_config.falcon_config.use2layer
+    pytorch_no_weights = inference_config.falcon_config.pytorch_no_weights
+    save_tti = inference_config.falcon_config.save
+    load_tti = inference_config.falcon_config.load
+    log_level_debug = inference_config.falcon_config.log_level_debug
+    tti_suffix = inference_config.falcon_config.tti_suffix
     use_60_layers = not use_2_layers and not pytorch_no_weights
     tti_name = (
         f"flash_decode_60l_{tti_suffix}.tti"
@@ -307,7 +320,7 @@ def get_backend_override_args():
         else f"flash_decode_2l_{tti_suffix}_test.tti"
     )
     tti_path = os.path.join(inference_config.tti_cache, tti_name)
-    print(
+    logger.info(
         f"getting overrides for:\n use_60_layers={use_60_layers},\n use_2_layers={use_2_layers},\n pytorch_no_weights={pytorch_no_weights},\n save_tti={save_tti},\n load_tti={load_tti},\n log_level_debug={log_level_debug},\n tti_name={tti_name}\n"
     )
     if save_tti:
@@ -322,7 +335,7 @@ def get_backend_override_args():
         pytorch_no_weights and save_tti
     ), "cannot save_tti with pytorch_no_weights."
     if pytorch_no_weights or use_2_layers:
-        print(
+        logger.warning(
             f"WARNING: pytorch_no_weights={pytorch_no_weights}, use_2_layers={use_2_layers} is run for debug and testing only."
         )
     override_args = get_falcon40b_backend_overrides(
@@ -334,7 +347,7 @@ def get_backend_override_args():
         log_level_debug=log_level_debug,
         tti_name=tti_name,
     )
-    print(override_args)
+    logger.info(override_args)
     return override_args
 
 
@@ -348,7 +361,7 @@ def copy_tvm_cache_to_cwd():
             src_file = os.path.join(inference_config.tvm_cache, file_name)
             if os.path.isfile(src_file) and file_name.startswith("tvm"):
                 # Copy the file to the current working directory
-                dest_file = os.path.join(os.getcwd(), file_name)
+                dest_file = os.path.join(current_dir, file_name)
                 shutil.copy(src_file, dest_file)
 
 
@@ -447,8 +460,8 @@ def status_func():
                 num_decoding_users,
                 decoding_users,
             ) = status_queue.get_nowait()
-            print("num_decoding_users: ", num_decoding_users)
-            print("prompt_q_size: ", prompt_q_size)
+            logger.info(f"num_decoding_users: {num_decoding_users}")
+            logger.info(f"prompt_q_size: {prompt_q_size}")
             context.set_num_decoding_users(num_decoding_users)
         time_since_response = time.time() - get_time_last_response()
         time_since_keep_live = time.time() - time_last_keep_alive_input
@@ -461,7 +474,7 @@ def status_func():
             params, _ = get_user_parameters(data={"max_tokens": 0})
             input_queue.put((session_id, prompt, params))
             time_last_keep_alive_input = time.time()
-            print(
+            logger.info(
                 f"keep alive: time_since_response={time_since_response}, time_since_keep_live={time_since_keep_live}"
             )
 
@@ -481,7 +494,7 @@ def safe_convert_type(data_dict, key, dest_type, default):
         converted_value = dest_type(value)
     # pylint: disable=broad-except
     except Exception as err:
-        print(f"Error: safe_convert excepts: {err}")
+        logger.error(f"Error: safe_convert excepts: {err}")
         status_phrase = f"Parameter: {key} is type={type(value)}, expected {dest_type}"
         status_code = 400
         error = ({"message": status_phrase}, status_code)
@@ -586,7 +599,7 @@ def get_output(session_id):
             continue
         elif session_id not in output_queue_map and started_generation:
             # generation ended without EOS token
-            print(f"session_id: {session_id} ended without EOS.")
+            logger.error(f"session_id: {session_id} ended without EOS.")
             done_generation = True
             continue
 
@@ -615,8 +628,9 @@ def handle_inference(prompt, params, user_session_id):
     if "session_id" not in session and user_session_id is None:
         session["session_id"] = str(uuid.uuid4())
     else:
-        print(f"PRE-EXISTING SESSION: {session.get('session_id')}, {user_session_id}")
-        # TODO: add user_session_id as session_id if passed correctly
+        logger.info(
+            f"user attemping pre-existing session: {session.get('session_id')}, {user_session_id}"
+        )
         # currently only support stateless sessions
         session["session_id"] = str(uuid.uuid4())
 
@@ -662,8 +676,40 @@ def get_chat_output(session_id):
     yield 'event: close\ndata: {"message": "Connection closed"}\n\n'
 
 
+def normalize_token(token) -> [str, str]:
+    """
+    Note that scheme is case insensitive for the authorization header.
+    See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Authorization#directives
+    """  # noqa: E501
+    one_space = " "
+    words = token.split(one_space)
+    scheme = words[0].lower()
+    return [scheme, " ".join(words[1:])]
+
+
+def read_authorization(
+    headers,
+) -> Optional[dict]:
+    authorization = headers.get("authorization")
+    if not authorization:
+        abort(HTTP_UNAUTHORIZED, description="Must provide Authorization header.")
+    [scheme, parameters] = normalize_token(authorization)
+    if scheme != "bearer":
+        user_error_msg = f"Authorization scheme was '{scheme}' instead of bearer"
+        abort(HTTP_UNAUTHORIZED, description=user_error_msg)
+    try:
+        payload = jwt.decode(parameters, os.getenv("JWT_SECRET"), algorithms=["HS256"])
+        if not payload:
+            abort(HTTP_UNAUTHORIZED)
+        return payload
+    except jwt.InvalidTokenError as exc:
+        user_error_msg = f"JWT payload decode error: {exc}"
+        abort(HTTP_BAD_REQUEST, description=user_error_msg)
+
+
 @app.route("/chat/falcon40b", methods=["POST"])
 def chat_inference_formatted():
+    _ = read_authorization(request.headers)
     # user will get 400 on invalid input, with helpful status message
     prompt, params, user_session_id, error = sanitize_request(request)
     if error:
@@ -679,6 +725,7 @@ def chat_inference_formatted():
 
 @app.route("/predictions/falcon40b", methods=["POST"])
 def chat_inference():
+    _ = read_authorization(request.headers)
     # user will get 400 on invalid input, with helpful status message
     prompt, params, user_session_id, error = sanitize_request(request)
     if error:
@@ -694,6 +741,7 @@ def chat_inference():
 
 @app.route("/inference/falcon40b", methods=["POST"])
 def inference():
+    _ = read_authorization(request.headers)
     # user will get 400 on invalid input, with helpful status message
     prompt, params, user_session_id, error = sanitize_request(request)
     if error:
@@ -720,14 +768,11 @@ def global_backend_init():
 
 
 def create_server():
+    logger.info("Starting inference API server ...")
     global_backend_init()
     return app
 
 
-# if __name__ == "__main__":
-#     app = create_server()
-#     app.run(
-#         port=inference_config.backend_server_port,
-#         host="127.0.0.1"
-#         # debug=False,
-#     )
+# NOTE: this server should be run using gunicorn instead of app.run()
+# To run the server for local development and testing use the mock server:
+# _mock_inference_api_server.py

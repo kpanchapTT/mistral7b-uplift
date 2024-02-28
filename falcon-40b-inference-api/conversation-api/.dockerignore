@@ -4,4 +4,3 @@
 !Dockerfile
 !src
 !requirements.txt
-!run_conversation_api.sh

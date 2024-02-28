@@ -3,34 +3,44 @@
 Flask server to add a minimal conversation memory layer to stateless LLM inference API.
 
 
+### JWT_TOKEN Authorization
+To authenticate requests use the header `Authorization`. The JWT token can be computed using the script `jwt_util.py`. This is an example:
+```bash
+export JWT_ENCODED=$(/mnt/scripts/jwt_util.py --secret ${JWT_SECRET} encode '{"team_id": "tenstorrent", "token_id":"debug-test"}')
+export JWT_TOKEN="Bearer ${JWT_ENCODED}"
+```
+
 ## run via docker compose
 
-```
-cd project-falcon/falcon-40b-inference-api
+To run the service foregrounded for python interactive debugging with pdf breakpoints use the docker-compose.yml command: `command: ["/bin/bash", "-c", "sleep infinity"]`
+
+```bash
+# define JWT_TOKEN for docker-compose.yml to pick up
+export JWT_TOKEN="Bear ${JWT_ENCODED}"
 docker compose up
+
+export IMAGE_NAME='project-falcon/conversation-api:v0.0.1'
+docker exec -it $(docker ps | grep "${IMAGE_NAME}" | awk '{print $1}') sh
+
+cd /mnt/src
+gunicorn --config gunicorn.conf.py
 ```
 
 ## environment vars:
 
-TT_API_KEY
-TT_API_URL
-FLASK_SECRET
+Environment variables except for secrets are defined in `conversation_config.py`.
 
-###
-
-```bash
-# get the container ID of the running docker container of the image
-export IMAGE_NAME='project-falcon/conversation-api:v0.0.1'
-docker exec -it $(docker ps | grep "${IMAGE_NAME}" | awk '{print $1}') sh
-```
-
-
+### Secrets
+TT_API_JWT: the JWT_TOKEN inference API is using for authorization
+FLASK_SECRET: used by flask server for session cookie signing, Cross-Site Request Forgery (CSRF) protection, and any cryptographicly secured operation.
+JWT_SECRET: used for authorization of the servers routes
 
 ###
 ```bash
-pip install --break-system-packages flask-cors black pyjwt
-cd /mnt
-python src/conversation_api_server.py
+# pip install --break-system-packages flask-cors black pyjwt
+cd /mnt/src
+gunicorn --config gunicorn.conf.py
+
 ```
 
 Test conversation API with storing and sending cookies in `cookies.txt`:
@@ -58,6 +68,7 @@ curl -X 'POST' \
   -L \
   -H 'accept: */*' \
   -H 'Content-Type: application/json' \
+  -H "Authorization: ${JWT_TOKEN}" \
   -d '{
   "text": "What number did you repeat?",
   "top_k": 1,
@@ -67,6 +78,8 @@ curl -X 'POST' \
   "stop_sequence": "."
 }'
 ```
+
+
 
 ## design
 

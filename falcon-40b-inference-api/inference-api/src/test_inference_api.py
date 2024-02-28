@@ -5,13 +5,14 @@ import requests
 from inference_config import inference_config
 
 DEPLOY_URL = "http://127.0.0.1"
-API_BASE_URL = f"{DEPLOY_URL}:{inference_config.reverse_proxy_port}"
+API_BASE_URL = f"{DEPLOY_URL}:{inference_config.backend_server_port}"
 API_URL = f"{API_BASE_URL}/predictions/falcon40b"
 # API_URL="https://falcon-api--tenstorrent-playground.workload.tenstorrent.com/inference/falcon40b"
 # HEALTH_URL = f"{API_BASE_URL}/get-health"
 
 headers = {"Authorization": os.environ.get("AUTHORIZATION")}
 # headers = {"Authorization": os.environ.get("APIM_KEY")}
+
 
 def test_valid_api_call(prompt_extra="", print_output=True):
     # set API prompt and optional parameters
@@ -31,7 +32,9 @@ def test_valid_api_call(prompt_extra="", print_output=True):
     # Handle chunked response
     if response.headers.get("transfer-encoding") == "chunked":
         print("processing chunks ...")
-        for idx, chunk in enumerate(response.iter_content(chunk_size=None, decode_unicode=True)):
+        for idx, chunk in enumerate(
+            response.iter_content(chunk_size=None, decode_unicode=True)
+        ):
             # Process each chunk of data as it's received
             if print_output:
                 print(f"chunk:{idx}")
