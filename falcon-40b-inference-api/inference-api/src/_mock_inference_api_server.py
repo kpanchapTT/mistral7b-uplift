@@ -43,6 +43,7 @@ def mock_decoder(self):
 
 def mock_load_model_and_tokenizer(self, args):
     from transformers import AutoTokenizer
+
     # # mock model
     model = None
     # Load tokenizer
@@ -56,6 +57,7 @@ def mock_post_init_pybudify(self, args):
 
 backend_initialized = False
 api_log_dir = os.path.join(inference_config.log_cache, "api_logs")
+
 
 def global_backend_init():
     global backend_initialized
@@ -74,21 +76,20 @@ def global_backend_init():
     DecodeBackend, "load_model_and_tokenizer", new=mock_load_model_and_tokenizer
 )
 def create_test_server():
-    global_backend_init()
-    return app
-
-
-if __name__ == "__main__":
     from flask_cors import CORS
 
-
-    app = create_test_server()
     # CORS for swagger-ui local testing
     CORS(
         app,
         supports_credentials=True,
         resources={r"/predictions/*": {"origins": "http://localhost:8080"}},
     )
+    global_backend_init()
+    return app
+
+
+if __name__ == "__main__":
+    app = create_test_server()
     app.run(
         port=inference_config.backend_server_port,
         host="0.0.0.0",

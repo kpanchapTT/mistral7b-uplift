@@ -2,15 +2,15 @@ import os
 import threading
 
 import requests
-from inference_config import inference_config
+from conversation_config import conversation_config
 
 DEPLOY_URL = "http://127.0.0.1"
-API_BASE_URL = f"{DEPLOY_URL}:{inference_config.reverse_proxy_port}"
+API_BASE_URL = f"{DEPLOY_URL}:{conversation_config.backend_server_port}"
 API_URL = f"{API_BASE_URL}/conversation"
 # API_URL="https://falcon-api--tenstorrent-playground.workload.tenstorrent.com/inference/falcon40b"
 # HEALTH_URL = f"{API_BASE_URL}/get-health"
 
-headers = {"Authorization": os.environ.get("AUTHORIZATION")}
+headers = {"Authorization": os.environ.get("JWT_TOKEN")}
 # headers = {"Authorization": os.environ.get("APIM_KEY")}
 
 

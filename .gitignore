@@ -36,7 +36,10 @@ resource_logs/
 site/
 
 # logs
-local_weka_mock/
+local_cache_root/
+
+# secrets
+.env
 
 # unignore
 !falcon-40b-inference-api/inference-api/requirements.txt

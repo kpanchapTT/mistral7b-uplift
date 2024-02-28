@@ -5,7 +5,7 @@ The following return codes are implemented (see https://developer.mozilla.org/en
 * __200__: Success, returns HTTP 1.1 chunked encoding to send raw text of each generated token to client.
 * __400__: Bad Request, returns `{"message": "Helpful debug message for client."}`, e.g. `Parameter: top_p is type=str, expected int`.
 * __401__: Unauthorized
-* __500__: Internal Server Error, this is default for unhandled exceptions, as defined in backend server and reverse proxy `proxy.py`.
+* __500__: Internal Server Error, this is default for unhandled exceptions, as defined in backend server.
 * __503__: Service Unavailable, returns `{"message": "Service overloaded, try again later."}`
 
 

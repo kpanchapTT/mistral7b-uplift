@@ -15,6 +15,11 @@ if not os.environ.get("MOCK_MODEL"):
     from transformers.generation.utils import top_k_top_p_filtering
 
 from inference_config import inference_config
+from inference_logger import get_logger
+
+logger = get_logger(__name__)
+logger.info(f"importing {__name__}")
+
 
 class DecodeBackend:
     class UserInfo:
@@ -26,9 +31,16 @@ class DecodeBackend:
                 prompt, padding="max_length", return_tensors="pt", max_length=2048
             )
             # remove any EOS tokens for input
-            tokenized.input_ids = tokenized.input_ids[tokenized.input_ids != tokenizer.eos_token_id]
+            tokenized.input_ids = tokenized.input_ids[
+                tokenized.input_ids != tokenizer.eos_token_id
+            ]
             # pad back to 2048 tokens
-            tokenized.input_ids = F.pad(tokenized.input_ids, (0, 2048-tokenized.input_ids.size(0)), 'constant', 0)
+            tokenized.input_ids = F.pad(
+                tokenized.input_ids,
+                (0, 2048 - tokenized.input_ids.size(0)),
+                "constant",
+                0,
+            )
 
             self.prompt_tokens = tokenized.input_ids.clone().squeeze()  # (2048,)
             self.prompt_length = torch.sum(tokenized.attention_mask).item()  # int
@@ -39,7 +51,9 @@ class DecodeBackend:
             self.cancel = False
             self.stop_sequence = None
             # Create backend log dir
-            self.backend_log_dir = os.path.join(inference_config.log_cache, "backend_logs")
+            self.backend_log_dir = os.path.join(
+                inference_config.log_cache, "backend_logs"
+            )
             if not os.path.exists(self.backend_log_dir):
                 os.mkdir(self.backend_log_dir)
             if params.get("stop_sequence"):
@@ -216,17 +230,17 @@ class DecodeBackend:
                     (user is not None) and (user_id == user.user_id)
                     for user in self.users
                 ):
-                    print(f"Cancelling input from user {user_id}")
+                    logger.info(f"Cancelling input from user {user_id}")
                     self._get_user_by_id(user_id).cancel = True
                 else:
-                    print(f"Unexpected cancelling for non-activte user {user_id}")
+                    logger.info(f"Unexpected cancelling for non-activte user {user_id}")
                 continue
 
             # Don't accept a prompt from a user that's already being procesed
             if any(
                 (user is not None) and (user_id == user.user_id) for user in self.users
             ):
-                print(f"Ignoring duplicate input from user {user_id}")
+                logger.warning(f"Ignoring duplicate input from user {user_id}")
                 continue
 
             user_info = DecodeBackend.UserInfo(
@@ -260,7 +274,7 @@ class DecodeBackend:
         # Check for duplicate user_ids and log it
         user_ids = [user.user_id for user in self.users if user is not None]
         if len(user_ids) != len(set(user_ids)):
-            print(f"WARNING: Duplicate user ids: {user_ids}")
+            logger.warning(f"WARNING: Duplicate user ids: {user_ids}")
 
     def prepare_inputs(self):
         """
@@ -300,9 +314,11 @@ class DecodeBackend:
 
         # make a tensor of prompt_tokens
         prompt_tokens = [
-            user_info.prompt_tokens
-            if user_info is not None
-            else torch.zeros((self.seqlen), dtype=torch.long)
+            (
+                user_info.prompt_tokens
+                if user_info is not None
+                else torch.zeros((self.seqlen), dtype=torch.long)
+            )
             for user_info in self.users
         ]
         prompt_lengths = [
@@ -376,9 +392,11 @@ class DecodeBackend:
                 for user in self.users
             ]
             temperatures = [
-                user.generation_params["temperature"]
-                if user is not None
-                else self.temperature
+                (
+                    user.generation_params["temperature"]
+                    if user is not None
+                    else self.temperature
+                )
                 for user in self.users
             ]
             output_tokens = batch_top_pk_logits_efficient(
@@ -462,7 +480,9 @@ class DecodeBackend:
 
             if self.verbose:
                 # Log user's output
-                with open(f"{self.self.backend_log_dir}/{self.users[i].user_id}.txt", "a") as f:
+                with open(
+                    f"{self.self.backend_log_dir}/{self.users[i].user_id}.txt", "a"
+                ) as f:
                     f.write(return_text)
                 with open(f"{self.self.backend_log_dir}/decode_backend.txt", "a") as f:
                     f.write(f"\npush_outputs()\n")
@@ -477,7 +497,9 @@ class DecodeBackend:
             token_text = self.tokenizer.decode(token, clean_up_tokenization_spaces=True)
             if token_text == self.tokenizer.eos_token:
                 if self.verbose:
-                    with open(f"{self.self.backend_log_dir}/decode_backend.txt", "a") as f:
+                    with open(
+                        f"{self.self.backend_log_dir}/decode_backend.txt", "a"
+                    ) as f:
                         f.write(
                             f"\nEvicted user_id: {self.users[i].user_id} from index {i} in user list\n"
                         )
@@ -553,7 +575,7 @@ def run_decode_backend(prompt_q, output_q, status_q, arg_overrides, verbose=True
             # Capture the stack trace
             stack_trace = traceback.format_exc()
             # write the stack trace to the specified output file
-            with open(f"{decode_be.backend_log_dir}/stack_trace", 'w') as f:
+            with open(f"{decode_be.backend_log_dir}/stack_trace", "w") as f:
                 f.write(stack_trace)
             # Re-raise the exception if you want the process to exit with an error
             raise e

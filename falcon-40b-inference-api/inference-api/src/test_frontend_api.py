@@ -6,7 +6,7 @@ from flask import Flask, Response, request
 from inference_config import inference_config
 
 API_URL = (
-    f"http://127.0.0.1:{inference_config.reverse_proxy_port}/predictions/falcon40b"
+    f"http://127.0.0.1:{inference_config.backend_server_port}/predictions/falcon40b"
 )
 HEADERS = {"Authorization": os.environ.get("AUTHORIZATION")}
 

@@ -11,7 +11,7 @@ from tt_models.falcon40b.multilineoutput import MultiLineOutput
 
 DEPLOY_URL = "http://127.0.0.1"
 # DEPLOY_URL = "https://falcon-api--tenstorrent-playground.workload.tenstorrent.com"
-API_BASE_URL = f"{DEPLOY_URL}:{inference_config.reverse_proxy_port}"
+API_BASE_URL = f"{DEPLOY_URL}:{inference_config.backend_server_port}"
 API_URL = f"{API_BASE_URL}/inference/falcon40b"
 HEALTH_URL = f"{API_BASE_URL}/get-health"
 
