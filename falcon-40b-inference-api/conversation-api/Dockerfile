@@ -18,3 +18,5 @@ RUN pip install --break-system-packages --no-cache-dir -r ${APP_DIR}/requirement
 WORKDIR ${APP_DIR}/src
 
 CMD ["gunicorn", "--config", "gunicorn.conf.py"]
+
+HEALTHCHECK --retries=5 --start-period=1s CMD curl -f http://localhost/ || exit 1

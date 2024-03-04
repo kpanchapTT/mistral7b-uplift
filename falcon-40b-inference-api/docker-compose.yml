@@ -30,7 +30,7 @@ services:
       # - CACHE_ROOT=/home/user/cache_root  # test non-mounted volme
       # these are TEST SECRETS ONLY
       - JWT_SECRET=${JWT_SECRET}
-      - FLASK_SECRET={FLASK_SECRET}
+      - FLASK_SECRET=${FLASK_SECRET}
       - SERVICE_PORT=7000
     volumes:
       - ./inference-api/src:/mnt/src
@@ -58,7 +58,7 @@ services:
         - JWT_SECRET=${JWT_SECRET}
         - CACHE_ROOT=/mnt/local_cache_root
         # - CACHE_ROOT=/cache_root  # test non-mounted volme
-        - FLASK_SECRET={FLASK_SECRET}
+        - FLASK_SECRET=${FLASK_SECRET}
         - SERVICE_PORT=7001
         - TEST_SERVER=1
     volumes:

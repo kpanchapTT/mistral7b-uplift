@@ -89,5 +89,3 @@ In memory datastructure from hatstack (https://github.com/deepset-ai/haystack) t
 
 Streaming is handled efficiently by only writing to conversation memory on completion of the response stream.
 
-
-
