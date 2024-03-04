@@ -82,3 +82,7 @@ RUN rm -rf /var/lib/apt/lists/* \
 USER user
 WORKDIR "${HOME_DIR}/${APP_DIR}/src"
 CMD ["gunicorn", "--config", "gunicorn.conf.py"]
+
+# default port is 7000
+ENV SERVICE_PORT=7000 
+HEALTHCHECK --retries=5 --start-period=1s CMD curl -f http://localhost:${SERVICE_PORT}/health || exit 1

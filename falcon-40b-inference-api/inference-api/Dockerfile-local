@@ -64,3 +64,7 @@ WORKDIR "${HOME_DIR}/${APP_DIR}/src"
 #   - `docker compose up`: will use the main runtime command
 #   - `docker run`: will allow for 
 CMD ["gunicorn", "--config", "gunicorn.conf.py"]
+
+# default port is 7000
+ENV SERVICE_PORT=7000 
+HEALTHCHECK --retries=5 --start-period=1s CMD curl -f http://localhost:${SERVICE_PORT}/health || exit 1

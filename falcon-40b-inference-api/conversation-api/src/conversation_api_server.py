@@ -116,10 +116,10 @@ def handle_internal_api_errors(res):
             abort(res.status_code, description=res.content)
 
 
-@app.route('/')
+@app.route("/")
 @app.route("/health")
 def health_check():
-    return 'OK', 200
+    return "OK", 200
 
 
 @app.route("/conversation/falcon-40b-instruct", methods=["POST"])
