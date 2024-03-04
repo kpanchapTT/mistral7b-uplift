@@ -18,3 +18,7 @@ RUN pip install --break-system-packages --no-cache-dir -r ${APP_DIR}/requirement
 WORKDIR ${APP_DIR}/src
 
 CMD ["gunicorn", "--config", "gunicorn.conf.py"]
+
+# default port is 7001
+ENV SERVICE_PORT=7001  
+HEALTHCHECK --retries=5 --start-period=1s CMD curl -f http://localhost:${SERVICE_PORT}/health || exit 1

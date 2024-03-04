@@ -116,10 +116,19 @@ def handle_internal_api_errors(res):
             abort(res.status_code, description=res.content)
 
 
+@app.route("/")
+@app.route("/health")
+def health_check():
+    return "OK", 200
+
+
 @app.route("/conversation/falcon-40b-instruct", methods=["POST"])
 def chat():
     _ = read_authorization(request.headers)
-    json_data = json.loads(request.data.decode())
+    try:
+        json_data = json.loads(request.data.decode())
+    except:
+        abort(HTTP_BAD_REQUEST, "Data parameter must be valid JSON.")
     prompt = json_data["text"]
     if "session_id" not in session:
         session["session_id"] = str(uuid.uuid4())

@@ -753,6 +753,20 @@ def inference():
     return Response(get_output(session_id), content_type="text/event-stream")
 
 
+@app.route("/")
+@app.route("/health")
+def health_check():
+    # check for keep alive failures occuring for 5x periods
+    time_since_response = time.time() - get_time_last_response()
+    if time_since_response > (inference_config.keepalive_input_period_seconds * 5):
+        return (
+            "Keep alive prompts failed five times. Service unhealthy.",
+            HTTP_INTERNAL_SERVER_ERROR,
+        )
+
+    return "OK", 200
+
+
 backend_initialized = False
 
 
