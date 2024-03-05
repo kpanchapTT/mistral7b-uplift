@@ -8,7 +8,7 @@ We are using OpenAPI v3.0.1 because it is supported by Azure APIM for import and
 
 See: https://github.com/swagger-api/swagger-ui/blob/master/docs/usage/installation.md#docker
 
-PWD should be `project-falcon/falcon-40b-inference-api`
+PWD should be `project-falcon/api-services`
 
 ```bash
 docker pull swaggerapi/swagger-ui

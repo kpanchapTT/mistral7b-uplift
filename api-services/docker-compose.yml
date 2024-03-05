@@ -1,0 +1,106 @@
+version: '3.8'
+services:
+  swagger-ui:
+    image: swaggerapi/swagger-ui
+    ports:
+      - "8080:8080"
+    environment:
+      - SWAGGER_JSON=/mnt/openapi/local/local_tenstorrent_llm_openapi_v3.json
+      - WITH_CREDENTIALS=true  # need for swagger-ui to send session cookie
+    volumes:
+      - ./docs/openapi:/mnt/openapi
+    networks:
+      - local_network
+
+  conversation-api:
+    build:
+      context: ./conversation-api
+      dockerfile: Dockerfile
+    image: project-falcon/conversation-api:v0.0.1
+    platform: linux/x86_64
+    # ports are only exposed if you want to test an external service, e.g. 'external' swagger-ui
+    # use docker-compose internal locak_network for inter-container networking
+    ports:
+      - "7001:7001"  # make available to 'external' swagger-ui
+    environment:
+        # these are test evariables ONLY
+        - TT_API_JWT=${JWT_TOKEN}
+        - TT_FALCON_40B_INFERENCE_API_URL=http://local-tt-buda-falcon-40b:7100/inference/falcon40b
+        - JWT_SECRET=${JWT_SECRET}
+        - CACHE_ROOT=/mnt/local_cache_root
+        # - CACHE_ROOT=/cache_root  # test non-mounted volme
+        - FLASK_SECRET=${FLASK_SECRET}
+        - SERVICE_PORT=7001
+        - TEST_SERVER=1
+    volumes:
+      - ./conversation-api/src:/mnt/src
+      - ./scripts:/mnt/scripts
+      - ./conversation-api/local_cache_root:/mnt/local_cache_root
+    # command: ["/bin/sh", "-c", "sleep infinity"]
+    command: ["gunicorn", "--config", "gunicorn.conf.py"]
+    networks:
+      - local_network
+
+  local-tt-buda-falcon-40b:
+    # image: ghcr.io/tenstorrent/project-falcon:v0.0.16
+    build:
+      context: ./inference-api/tt-buda-falcon-40b
+      dockerfile: Dockerfile-local
+    image: project-falcon/falcon40b-demo:v0.0.17-local
+    platform: linux/x86_64
+    # ports are only exposed if you want to test an external service, e.g. 'external' swagger-ui
+    # use docker-compose internal locak_network for inter-container networking
+    ports:
+      - "7100:7100"  # make available to 'external' swagger-ui
+    environment:
+      - MOCK_MODEL=1  # mock out model
+      - FALCON_40B_2LAYER=1  # running full 60L version, init_kv_cache may OOM
+      - CACHE_ROOT=/mnt/local_cache_root  
+      # - CACHE_ROOT=/home/user/cache_root  # test non-mounted volme
+      # these are TEST SECRETS ONLY
+      - JWT_SECRET=${JWT_SECRET}
+      - FLASK_SECRET=${FLASK_SECRET}
+      - SERVICE_PORT=7100
+    volumes:
+      - ./inference-api/tt-buda-falcon-40b/src:/mnt/src
+      - ./scripts:/mnt/scripts
+      - ./inference-api/tt-buda-falcon-40b/local_cache_root:/mnt/local_cache_root
+    # command: ["/bin/bash", "-c", "sleep infinity"]
+    command: ["gunicorn", "--config", "gunicorn.conf.py"]
+    networks:
+      - local_network
+
+  # local-tt-metal-falcon-7b:
+  #   # image: ghcr.io/tenstorrent/project-falcon:v0.0.16
+  #   build:
+  #     context: ./inference-api/tt-buda-falcon-40b
+  #     dockerfile: Dockerfile-local
+  #   image: project-falcon/falcon40b-demo:v0.0.17-local
+  #   platform: linux/x86_64
+  #   # ports are only exposed if you want to test an external service, e.g. 'external' swagger-ui
+  #   # use docker-compose internal locak_network for inter-container networking
+  #   ports:
+  #     - "7100:7100"  # make available to 'external' swagger-ui
+  #   environment:
+  #     - MOCK_MODEL=1  # mock out model
+  #     - FALCON_40B_2LAYER=1  # running full 60L version, init_kv_cache may OOM
+  #     - CACHE_ROOT=/mnt/local_cache_root  
+  #     # - CACHE_ROOT=/home/user/cache_root  # test non-mounted volme
+  #     # these are TEST SECRETS ONLY
+  #     - JWT_SECRET=${JWT_SECRET}
+  #     - FLASK_SECRET=${FLASK_SECRET}
+  #     - SERVICE_PORT=7000
+  #   volumes:
+  #     - ./inference-api/tt-buda-falcon-40b/src:/mnt/src
+  #     - ./scripts:/mnt/scripts
+  #     - ./inference-api/tt-buda-falcon-40b/local_cache_root:/mnt/local_cache_root
+  #   # command: ["/bin/bash", "-c", "sleep infinity"]
+  #   command: ["gunicorn", "--config", "gunicorn.conf.py"]
+  #   networks:
+  #     - local_network
+
+
+
+networks:
+  local_network:
+    driver: bridge
