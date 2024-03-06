@@ -4,7 +4,7 @@ FROM alpine:latest
 RUN apk update && \
     apk add --no-cache --update python3 py3-pip curl
 
-ARG APP_DIR=/falcon-40b-conversation-api
+ARG APP_DIR=/conversation-api
 # ARG HOME_DIR=/home/user
 
 # Copy application code to the container
