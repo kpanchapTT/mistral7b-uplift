@@ -16,7 +16,7 @@ from flask import Flask, Response, request, session, abort
 
 sys.path.append(os.getcwd())
 
-from falcon_7b_backend import run_decode_backend
+from falcon_7b_backend import run_backend
 from inference_config import inference_config
 from inference_logger import get_logger
 
@@ -113,7 +113,7 @@ def initialize_decode_backend(override_args):
     status_queue = multiprocessing.Queue()
     # run the decode backend in a separate process
     backend_process = multiprocessing.Process(
-        target=run_decode_backend,
+        target=run_backend,
         args=(
             input_queue,
             output_queue,

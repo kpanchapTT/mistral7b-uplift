@@ -88,14 +88,14 @@ def print_output_prompts(generated_ids, tokenizer, num_users_to_display=None):
 
 
 def run_falcon_demo_kv(
-    user_input, model_version, batch_size, num_layers, max_seq_len, model_config, model_location_generator, device
+    user_input, model_version, batch_size, num_layers, max_seq_len, model_config, model_location_generator, device, cache_root
 ):
     torch.manual_seed(0)
 
     tt_lib.program_cache.enable()
 
-    tt_cache_path = get_tt_cache_path(model_version)
-
+    # tt_cache_path = get_tt_cache_path(model_version)
+    tt_cache_path = Path(cache_root) / "tt-metal-cache" / model_version
     configuration = FalconConfig(**model_config_entries)
 
     profiler.start(f"loading_inputs")
@@ -109,17 +109,17 @@ def run_falcon_demo_kv(
     # State dict is needed for embeddings
     logger.info("Loading weights...")
     profiler.start(f"loading_weights")
-    if (tt_cache_path == Path(f"models/demos/falcon7b/datasets/{model_version}")) and (
-        len(os.listdir(f"models/demos/falcon7b/datasets/{model_version}")) < 260
-    ):
-        logger.info("Weights not found on machine; downloading weights...")
-        model_name = model_location_generator(model_version, model_subdir="Falcon")
-        hugging_face_reference_model = FalconForCausalLM.from_pretrained(model_name, low_cpu_mem_usage=True)
-        hugging_face_reference_model.eval()
-        state_dict = hugging_face_reference_model.state_dict()
-        torch.save(state_dict["transformer.word_embeddings.weight"], tt_cache_path / "embedding.pt")
-    else:
-        state_dict = None
+    # if (tt_cache_path == Path(f"models/demos/falcon7b/datasets/{model_version}")) and (
+    #     len(os.listdir(f"models/demos/falcon7b/datasets/{model_version}")) < 260
+    # ):
+    #     logger.info("Weights not found on machine; downloading weights...")
+    #     model_cache_path = Path(cache_root) / "tt-metal-models" / model_version
+    #     hugging_face_reference_model = FalconForCausalLM.from_pretrained(model_version, low_cpu_mem_usage=True)
+    #     hugging_face_reference_model.eval()
+    #     state_dict = hugging_face_reference_model.state_dict()
+    #     torch.save(state_dict["transformer.word_embeddings.weight"], tt_cache_path / "embedding.pt")
+    # else:
+    #     state_dict = None
 
     logger.info("Loading weights finished!")
     profiler.end(f"loading_weights")
@@ -423,7 +423,7 @@ def test_demo(
     disable_persistent_kernel_cache()
     disable_compilation_reports()
     tt_lib.profiler.set_profiler_location(f"tt_metal/tools/profiler/logs/falcon7b")
-
+    
     return run_falcon_demo_kv(
         user_input=user_input,
         model_version="tiiuae/falcon-7b-instruct",
@@ -433,4 +433,26 @@ def test_demo(
         model_config=get_model_config("BFLOAT16-DRAM"),
         model_location_generator=model_location_generator,
         device=device,
+    )
+
+
+if __name__ == "__main__":
+    disable_persistent_kernel_cache()
+    disable_compilation_reports()
+    cache_root = os.environ["CACHE_ROOT"]
+
+    tt_lib.profiler.set_profiler_location(f"{cache_root}/logs/falcon7b")
+    
+    user_input = ["prompt1"]
+    device
+    return run_falcon_demo_kv(
+        user_input=user_input,
+        model_version="tiiuae/falcon-7b-instruct",
+        batch_size=32,
+        num_layers=32,
+        max_seq_len=1024,
+        model_config=get_model_config("BFLOAT16-DRAM"),
+        model_location_generator=model_location_generator,
+        device=device,
+        cache_root=cache_root,
     )

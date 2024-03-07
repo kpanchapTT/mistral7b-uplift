@@ -6,7 +6,7 @@ import torch
 from torch import nn
 import tt_lib
 
-from models.utility_functions import torch2tt_tensor
+from tt_metal_impl.utility_functions import torch2tt_tensor
 
 
 class TtFalconMLP(nn.Module):

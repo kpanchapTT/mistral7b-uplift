@@ -8,7 +8,6 @@ from time import sleep, time
 import json
 import pytest
 from functools import partial
-import tt_lib
 import torch
 from loguru import logger
 import time
@@ -23,7 +22,7 @@ import torch
 import torch.nn.functional as F
 
 if not os.environ.get("MOCK_MODEL"):
-    # from pybudify40 import PyBudify
+    import tt_lib as ttl
     from tt_metal_impl.tt.falcon_causallm import TtFalconCausalLM
     from tt_metal_impl.reference.hf_modeling_falcon import FalconConfig, FalconForCausalLM
     from tt_metal_impl.tt.model_config import get_model_config, get_tt_cache_path, model_config_entries
@@ -35,8 +34,6 @@ if not os.environ.get("MOCK_MODEL"):
         torch2tt_tensor,
         tt2torch_tensor,
     )
-
-    
     from transformers.generation.utils import top_k_top_p_filtering
 
 from inference_config import inference_config
@@ -48,46 +45,76 @@ logger.info(f"importing {__name__}")
 END_OF_TEXT = 11
 SPACE = 204
 
+def preprocess_and_validate_inputs(input_prompts, tokenizer, max_seq_len):
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenized_inputs = tokenizer(
+        input_prompts, padding="max_length", max_length=max_seq_len, add_special_tokens=False, return_tensors="pt"
+    )
+    prefill_ids = tokenized_inputs["input_ids"]
+
+    tokenized_inputs_nopad = tokenizer(
+        input_prompts, padding=False, max_length=max_seq_len, add_special_tokens=False, return_tensors="pt"
+    )
+
+    num_users = len(tokenized_inputs_nopad["input_ids"])
+    num_input_tokens = len(tokenized_inputs_nopad["input_ids"][0])
+    for input_prompt in tokenized_inputs_nopad["input_ids"]:
+        assert len(input_prompt) == num_input_tokens
+    logger.info(f"# of users: {num_users}")
+    logger.info(f"# of input tokens per user: {num_input_tokens}")
+
+    return prefill_ids, num_users, num_input_tokens
+
+def initialize_kv_cache(configuration, num_layers, batch_size, max_seq_len, device):
+    head_dim = configuration.hidden_size // configuration.num_attention_heads
+    kv_cache = ()
+    for _ in range(num_layers):
+        k_cache = torch.zeros(batch_size, 1, max_seq_len, head_dim)
+        v_cache = torch.zeros(batch_size, 1, max_seq_len, head_dim)
+        tt_k_cache = torch2tt_tensor(k_cache, device)
+        tt_v_cache = torch2tt_tensor(v_cache, device)
+        kv_cache += ((tt_k_cache, tt_v_cache),)
+    return kv_cache
 
 class PrefillDecodeBackend:
-    class UserInfo:
-        def __init__(self, user_id, prompt, position_id, params, tokenizer):
-            self.user_id = user_id
-            self.prompt = prompt
-            self.position_id = position_id
-            tokenized = tokenizer(
-                prompt, padding="max_length", return_tensors="pt", max_length=2048
-            )
-            # remove any EOS tokens for input
-            tokenized.input_ids = tokenized.input_ids[
-                tokenized.input_ids != tokenizer.eos_token_id
-            ]
-            # pad back to 2048 tokens
-            tokenized.input_ids = F.pad(
-                tokenized.input_ids,
-                (0, 2048 - tokenized.input_ids.size(0)),
-                "constant",
-                0,
-            )
+    # class UserInfo:
+    #     def __init__(self, user_id, prompt, position_id, params, tokenizer):
+    #         self.user_id = user_id
+    #         self.prompt = prompt
+    #         self.position_id = position_id
+    #         tokenized = tokenizer(
+    #             prompt, padding="max_length", return_tensors="pt", max_length=2048
+    #         )
+    #         # remove any EOS tokens for input
+    #         tokenized.input_ids = tokenized.input_ids[
+    #             tokenized.input_ids != tokenizer.eos_token_id
+    #         ]
+    #         # pad back to 2048 tokens
+    #         tokenized.input_ids = F.pad(
+    #             tokenized.input_ids,
+    #             (0, 2048 - tokenized.input_ids.size(0)),
+    #             "constant",
+    #             0,
+    #         )
 
-            self.prompt_tokens = tokenized.input_ids.clone().squeeze()  # (2048,)
-            self.prompt_length = torch.sum(tokenized.attention_mask).item()  # int
+    #         self.prompt_tokens = tokenized.input_ids.clone().squeeze()  # (2048,)
+    #         self.prompt_length = torch.sum(tokenized.attention_mask).item()  # int
 
-            self.generation_params = params
-            self.max_tokens = params["max_tokens"]
-            self.return_prompt = params["return_prompt"]
-            self.cancel = False
-            self.stop_sequence = None
-            # Create backend log dir
-            self.backend_log_dir = os.path.join(
-                inference_config.log_cache, "backend_logs"
-            )
-            if not os.path.exists(self.backend_log_dir):
-                os.mkdir(self.backend_log_dir)
-            if params.get("stop_sequence"):
-                self.stop_sequence = tokenizer(params.get("stop_sequence")).input_ids[0]
+    #         self.generation_params = params
+    #         self.max_tokens = params["max_tokens"]
+    #         self.return_prompt = params["return_prompt"]
+    #         self.cancel = False
+    #         self.stop_sequence = None
+    #         # Create backend log dir
+    #         self.backend_log_dir = os.path.join(
+    #             inference_config.log_cache, "backend_logs"
+    #         )
+    #         if not os.path.exists(self.backend_log_dir):
+    #             os.mkdir(self.backend_log_dir)
+    #         if params.get("stop_sequence"):
+    #             self.stop_sequence = tokenizer(params.get("stop_sequence")).input_ids[0]
 
-    def __init__(self, args, verbose=False) -> None:
+    def __init__(self, model_version, batch_size, num_layers, max_seq_len, cache_root, verbose=False) -> None:
         """
         Initialize pybuda model and all infracstructures to continuously run decode
         Maintain a cur_prompts for decode.
@@ -137,42 +164,74 @@ class PrefillDecodeBackend:
         #         f.write("\n\n")
 
         # new init:
-        self.model_version = args.model_version
-        self.device = args.device
-        self.batch_size
-        self.num_layers
-        self.max_seq_len
+        breakpoint()
+        self.model_version = model_version
+        # self.device = device
+        self.batch_size = batch_size
+        self.num_layers = num_layers
+        self.max_seq_len = max_seq_len
         self.model_config = get_model_config("BFLOAT16-DRAM")
+        #
+        self.device = None
+        self.cache_root = Path(cache_root)
+        if not self.cache_root.exists():
+            self.cache_root.mkdir(parents=True, exist_ok=True)
+        # initialization            
         if not os.environ.get("MOCK_MODEL"):
             self.init_tt_metal()
+
+    def model_location_generator(self, model_version, model_subdir=""):
+        model_cache_path = Path(self.cache_root) / "tt-metal-models" / model_version
+        model_cache_path.mkdir(parents=True, exist_ok=True)
+        return model_cache_path
+
+    def get_tt_cache_path(self, model_version, model_subdir="", default_dir=""):
+        tt_cache_path = Path(self.cache_root) / "tt-metal-cache" / model_version
+        tt_cache_path.mkdir(parents=True, exist_ok=True)
+        return tt_cache_path
+
+    def teardown(self):
+        print("teardown ...")
+        logger.info("teardown ...")
+        if not os.environ.get("MOCK_MODEL"):
+            self.teardown_tt_metal_device()
+
+    def teardown_tt_metal_device(self):
+        logger.info("teardown_tt_metal_device ...")
+        ttl.device.CloseDevice(self.device)
+        ttl.device.DeallocateBuffers(self.device)
+
+    def init_tt_metal_device(self):
+        logger.info("init_tt_metal_device ...")
+        # TODO: can this be determined?
+        # if not, use environment var
+        device_id = os.getenv("DEVICE_ID", 0)
+        device = ttl.device.CreateDevice(device_id)
+        ttl.device.SetDefaultDevice(device)
+        self.device = ttl.device.GetDefaultDevice()
         
 
     def init_tt_metal(self):
+        logger.info("init_tt_metal ...")
+        self.init_tt_metal_device()
+        ttl.program_cache.enable()
+        disable_persistent_kernel_cache()
+        disable_compilation_reports()
+
         torch.manual_seed(0)
 
-        tt_lib.program_cache.enable()
-
-        tt_cache_path = get_tt_cache_path(self.model_version)
+        tt_cache_path = self.get_tt_cache_path(self.model_version)
 
         configuration = FalconConfig(**model_config_entries)
-
-        profiler.start(f"loading_inputs")
-        if len(user_input) == 1:
-            input_prompts = user_input
-        else:
-            input_prompts = load_inputs(user_input, batch_size)
-
-        profiler.end(f"loading_inputs")
 
         # State dict is needed for embeddings
         logger.info("Loading weights...")
         profiler.start(f"loading_weights")
-        if (tt_cache_path == Path(f"models/demos/falcon7b/datasets/{model_version}")) and (
-            len(os.listdir(f"models/demos/falcon7b/datasets/{model_version}")) < 260
-        ):
+        if len(os.listdir(tt_cache_path)) < 260:
             logger.info("Weights not found on machine; downloading weights...")
-            model_name = model_location_generator(model_version, model_subdir="Falcon")
-            hugging_face_reference_model = FalconForCausalLM.from_pretrained(model_name, low_cpu_mem_usage=True)
+            model_cache = self.model_location_generator(self.model_version)
+            # use cache_dir arg
+            hugging_face_reference_model = FalconForCausalLM.from_pretrained(self.model_version, low_cpu_mem_usage=True, cache_dir=model_cache)
             hugging_face_reference_model.eval()
             state_dict = hugging_face_reference_model.state_dict()
             torch.save(state_dict["transformer.word_embeddings.weight"], tt_cache_path / "embedding.pt")
@@ -182,7 +241,7 @@ class PrefillDecodeBackend:
         logger.info("Loading weights finished!")
         profiler.end(f"loading_weights")
 
-        tt_lib.device.Synchronize(device)
+        ttl.device.Synchronize(self.device)
 
         logger.info("Moving weights to device; might take some time...")
         profiler.start(f"moving_to_device")
@@ -192,73 +251,33 @@ class PrefillDecodeBackend:
             self.device,
             state_dict,
             base_url,
-            num_layers,
+            self.num_layers,
             configuration,
-            max_seq_len,
-            model_config,
+            self.max_seq_len,
+            self.model_config,
             tt_cache_path,
         )
 
         logger.info("Moved weights to device!")
         profiler.end(f"moving_to_device")
 
-        tt_lib.device.Synchronize(device)
+        ttl.device.Synchronize(self.device)
 
         logger.info("Tokenizing inputs...")
         profiler.start(f"tokenizing_inputs")
 
-        tokenizer = AutoTokenizer.from_pretrained(model_version)
-        prefill_ids, num_users, num_input_tokens = preprocess_and_validate_inputs(input_prompts, tokenizer, max_seq_len)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_version)
 
         profiler.end(f"tokenizing_inputs")
 
         logger.info("Initializing KV cache...")
         profiler.start(f"initializing_KV_cache")
-        kv_cache = initialize_kv_cache(configuration, num_layers, batch_size, max_seq_len, device)
+        self.kv_cache = initialize_kv_cache(configuration, num_layers, batch_size, max_seq_len, device)
         profiler.end(f"initializing_KV_cache")
         profiler.disable()
 
-    def load_model_and_tokenizer(self, args):
-        pass
-
-    def _init_kv_cache(self):
-        ext_past_kv = []
-        # past_key_values is a tuple of [key, value] tensors, one for each layer
-        # copy into the right parts of the key, value tensors
-        for _ in range(self.num_layers):
-            past_key = torch.zeros(
-                (self.max_users, 8, self.seqlen, 64), dtype=torch.bfloat16
-            )
-            past_value = torch.zeros(
-                (self.max_users, 8, self.seqlen, 64), dtype=torch.bfloat16
-            )
-
-            if self.device == "pytorch":
-                past_key = past_key.to(torch.float32)
-                past_value = past_value.to(torch.float32)
-
-            ext_past_kv.append([past_key, past_value])
-
-        past_key_values = tuple(ext_past_kv)
-
-        if self.max_users > 1:
-            new_past_key_values = []
-            for k, v in past_key_values:
-                # split the kv in each group into separate tensor
-                # k, v are size [32 x 8 x 2048 x 64]
-                layer_ks = []
-                layer_vs = []
-                for n in range(k.shape[1]):
-                    # want it to be [1 x 32 x 2048 x 64]
-                    layer_k = k[:, [n], :, :].transpose(0, 1)
-                    layer_ks.extend([layer_k])
-                    layer_v = v[:, [n], :, :].transpose(0, 1)
-                    layer_vs.extend([layer_v])
-
-                new_past_key_values.append(layer_ks + layer_vs)
-
-            past_key_values = tuple(new_past_key_values)
-        return past_key_values
+    # def load_model_and_tokenizer(self, args):
+    #     pass
 
     def _get_user_by_id(self, user_id):
         for user in self.users:
@@ -332,73 +351,87 @@ class PrefillDecodeBackend:
         user_ids = [user.user_id for user in self.users if user is not None]
         if len(user_ids) != len(set(user_ids)):
             logger.warning(f"WARNING: Duplicate user ids: {user_ids}")
-
+    
+    
     def prepare_inputs(self):
-        """
-        input_ids:          1x32, predictions (long)
-        prompt_tokens:      32xseqlen padded prompts (long)
-        position_ids:       1x32 (long) tensor of position_ids for the currently generated token
-        prompt_lengths:     32, tensor of number of tokens in each prompt
-        attention_mask:     1x32x2048
-        kv_mask_id:         1x32
-        """
+        profiler.start(f"loading_inputs")
+        if len(user_input) == 1:
+            input_prompts = user_input
+        else:
+            input_prompts = load_inputs(user_input, batch_size)
 
-        # create tensor position_ids based on user_info.position_id
-        position_ids = [
-            user_info.position_id if user_info is not None else 0
-            for user_info in self.users
-        ]
-        self.position_ids = torch.tensor(position_ids, dtype=torch.long).unsqueeze(0)
+        profiler.end(f"loading_inputs")
+        
+        prefill_ids, num_users, num_input_tokens = preprocess_and_validate_inputs(input_prompts, self.tokenizer, self.max_seq_len)
 
-        # create attention mask and kv_mask_id based on position_id
-        attention_mask = torch.zeros(
-            (1, self.max_users, self.seqlen), dtype=torch.int32
-        )
 
-        for i, pos_id in enumerate(self.position_ids[0]):
-            attention_mask[0, i, :pos_id] = 1
 
-        kv_mask_id = (
-            self.position_ids.clone().view(1, -1).to(torch.int32)
-        )  # batch, num_users
-        self.attention_mask = attention_mask
-        self.kv_mask_id = kv_mask_id
+    # def prepare_inputs(self):
+    #     """
+    #     input_ids:          1x32, predictions (long)
+    #     prompt_tokens:      32xseqlen padded prompts (long)
+    #     position_ids:       1x32 (long) tensor of position_ids for the currently generated token
+    #     prompt_lengths:     32, tensor of number of tokens in each prompt
+    #     attention_mask:     1x32x2048
+    #     kv_mask_id:         1x32
+    #     """
 
-        # if the position id is 0, then the input_id is always the first token
-        for i in range(self.max_users):
-            if self.users[i] is not None and self.position_ids[0, i] == 0:
-                self.input_ids[0, i] = self.users[i].prompt_tokens[0]
+    #     # create tensor position_ids based on user_info.position_id
+    #     position_ids = [
+    #         user_info.position_id if user_info is not None else 0
+    #         for user_info in self.users
+    #     ]
+    #     self.position_ids = torch.tensor(position_ids, dtype=torch.long).unsqueeze(0)
 
-        # make a tensor of prompt_tokens
-        prompt_tokens = [
-            (
-                user_info.prompt_tokens
-                if user_info is not None
-                else torch.zeros((self.seqlen), dtype=torch.long)
-            )
-            for user_info in self.users
-        ]
-        prompt_lengths = [
-            user_info.prompt_length if user_info is not None else 0
-            for user_info in self.users
-        ]
-        self.prompt_tokens = torch.stack(prompt_tokens)
+    #     # create attention mask and kv_mask_id based on position_id
+    #     attention_mask = torch.zeros(
+    #         (1, self.max_users, self.seqlen), dtype=torch.int32
+    #     )
 
-        self.prompt_lengths = torch.tensor(prompt_lengths)
+    #     for i, pos_id in enumerate(self.position_ids[0]):
+    #         attention_mask[0, i, :pos_id] = 1
 
-        if self.verbose:
-            torch.set_printoptions(threshold=10000)
-            with open(f"{self.self.backend_log_dir}/decode_backend.txt", "a") as f:
-                f.write(f"\nprepare_inputs()\n")
-                f.write(f"input_ids: {self.input_ids}\n")
-                f.write(f"position_ids: {self.position_ids}\n")
-                f.write(f"prompt_tokens: {self.prompt_tokens}\n")
-                f.write(f"prompt_lengths: {self.prompt_lengths}\n")
-                f.write(f"attention_mask: {self.attention_mask}\n")
-                f.write(f"kv_mask_id: {self.kv_mask_id}\n")
-                f.write(
-                    f"user valid bitmask: {[1 if user is not None else 0 for user in self.users]}"
-                )
+    #     kv_mask_id = (
+    #         self.position_ids.clone().view(1, -1).to(torch.int32)
+    #     )  # batch, num_users
+    #     self.attention_mask = attention_mask
+    #     self.kv_mask_id = kv_mask_id
+
+    #     # if the position id is 0, then the input_id is always the first token
+    #     for i in range(self.max_users):
+    #         if self.users[i] is not None and self.position_ids[0, i] == 0:
+    #             self.input_ids[0, i] = self.users[i].prompt_tokens[0]
+
+    #     # make a tensor of prompt_tokens
+    #     prompt_tokens = [
+    #         (
+    #             user_info.prompt_tokens
+    #             if user_info is not None
+    #             else torch.zeros((self.seqlen), dtype=torch.long)
+    #         )
+    #         for user_info in self.users
+    #     ]
+    #     prompt_lengths = [
+    #         user_info.prompt_length if user_info is not None else 0
+    #         for user_info in self.users
+    #     ]
+    #     self.prompt_tokens = torch.stack(prompt_tokens)
+
+    #     self.prompt_lengths = torch.tensor(prompt_lengths)
+
+    #     if self.verbose:
+    #         torch.set_printoptions(threshold=10000)
+    #         with open(f"{self.self.backend_log_dir}/decode_backend.txt", "a") as f:
+    #             f.write(f"\nprepare_inputs()\n")
+    #             f.write(f"input_ids: {self.input_ids}\n")
+    #             f.write(f"position_ids: {self.position_ids}\n")
+    #             f.write(f"prompt_tokens: {self.prompt_tokens}\n")
+    #             f.write(f"prompt_lengths: {self.prompt_lengths}\n")
+    #             f.write(f"attention_mask: {self.attention_mask}\n")
+    #             f.write(f"kv_mask_id: {self.kv_mask_id}\n")
+    #             f.write(
+    #                 f"user valid bitmask: {[1 if user is not None else 0 for user in self.users]}"
+    #             )
 
     def sequential_prefill_decode(self):
         logger.info("Running prefill ...")
@@ -411,12 +444,12 @@ class PrefillDecodeBackend:
             (
                 tt_prefill_embeddings,
                 tt_prefill_attention_mask,
-            ) = tt_FalconCausalLM.model_preprocessing(
+            ) = self.tt_FalconCausalLM.model_preprocessing(
                 "prefill", prefill_ids[user_id : user_id + 1], 0, num_input_tokens=num_input_tokens
             )
             assert tt_prefill_attention_mask is not None
 
-            tt_logits, kv_cache = tt_FalconCausalLM(
+            tt_logits, kv_cache = self.tt_FalconCausalLM(
                 input_embeddings=tt_prefill_embeddings,
                 llm_mode="prefill",
                 attention_mask=tt_prefill_attention_mask,
@@ -440,9 +473,59 @@ class PrefillDecodeBackend:
 
         generated_ids = torch.concat((prefill_ids[..., :num_input_tokens], output_ids), dim=1)
 
-        tt_lib.device.Synchronize(device)
+        ttl.device.Synchronize(device)
         logger.info("Done prefill")
 
+        logger.info("Running inference decode stage...")
+        decode_ids = torch.zeros(batch_size, 1, dtype=torch.int64)
+        for user_id, output_id in enumerate(output_ids):
+            decode_ids[user_id] = output_id
+
+        kv_cache_len = num_input_tokens  # This will increment by one after each decode
+        prompt_is_done = [False for _ in range(num_users)]
+
+        time_decode_inference = 0
+        for output_token_index in range(max_seq_len - num_input_tokens):
+            time_decode_inference_start = time.time()
+            (
+                tt_decode_embeddings,
+                tt_decode_attention_mask,
+            ) = tt_FalconCausalLM.model_preprocessing("decode", decode_ids, kv_cache_len, num_input_tokens=kv_cache_len + 1)
+            assert tt_decode_attention_mask is not None
+
+            tt_logits, kv_cache = tt_FalconCausalLM(
+                input_embeddings=tt_decode_embeddings,
+                llm_mode="decode",
+                attention_mask=tt_decode_attention_mask,
+                layer_past=kv_cache,
+                layer_past_len=kv_cache_len,
+                use_cache=use_cache,
+            )
+            time_decode_inference_end = time.time()
+            time_decode_inference += time_decode_inference_end - time_decode_inference_start
+
+            tt_decode_embeddings.deallocate()
+            if tt_decode_attention_mask is not None:
+                tt_decode_attention_mask.deallocate()
+
+            logits = tt2torch_tensor(tt_logits).squeeze(1)
+            tt_logits.deallocate()
+
+            decode_ids = post_processor(logits=logits, index=...).reshape(batch_size, 1)
+
+            for user_id, user_decode_id in enumerate(decode_ids[:num_users]):
+                if user_decode_id == END_OF_TEXT:
+                    prompt_is_done[user_id] = True
+                if prompt_is_done[user_id]:
+                    decode_ids[user_id] = SPACE
+
+            if all(prompt_is_done):
+                break
+
+            generated_ids = torch.concat((generated_ids, decode_ids[:num_users]), dim=1)
+            kv_cache_len += 1
+
+        logger.info("Finished inference decode stage!")
         
 
 
@@ -632,6 +715,7 @@ class PrefillDecodeBackend:
         prompt_q: {'user_id1': 'prompt1', 'user_id2': 'prompt2'...}
         output_q: {'user_id1': 'generated_1', 'user_id3': 'generated_1', 'user_id1': 'generated_2'...}
         """
+        logger.info("starting run_generate ...")
         while True:
             if self.verbose:
                 with open(f"{self.self.backend_log_dir}/decode_backend.txt", "a") as f:
@@ -639,7 +723,7 @@ class PrefillDecodeBackend:
             self.pick_prompts(prompt_q)  # we update to self.users
             self.prepare_inputs()
             self.sequential_prefill_decode()
-            self.switch_tokens()
+            # self.switch_tokens()
             self.push_outputs(output_q)
             self.update_users()
             self.send_status(prompt_q, status_q)
@@ -666,14 +750,24 @@ def batch_top_pk_logits_efficient(
     return torch.concat(out_tokens)
 
 
-def run_decode_backend(prompt_q, output_q, status_q, arg_overrides, verbose=True):
+def run_backend(prompt_q, output_q, status_q, arg_overrides, verbose=True):
+    logger.error("starting run_backend ...")
     with torch.no_grad():
-        # initialization
-        backend = PrefillDecodeBackend(arg_overrides, verbose=verbose)
-        # run generate
+        
+        # TODO: wire out these kwargs to arg_overrides, rename
+        kwargs = {
+            "model_version": "tiiuae/falcon-7b-instruct",
+            "batch_size": 32,
+            "num_layers": 32,
+            "max_seq_len": 1024, 
+            "cache_root": Path("/mnt/mldata/test_cache_root")
+        }
+        backend = PrefillDecodeBackend(**kwargs, verbose=verbose)
         try:
+            # run generate
             backend.run_generate(prompt_q, output_q, status_q)
         except Exception as e:
+            backend.teardown()
             # Capture the stack trace
             stack_trace = traceback.format_exc()
             # write the stack trace to the specified output file
@@ -681,4 +775,5 @@ def run_decode_backend(prompt_q, output_q, status_q, arg_overrides, verbose=True
                 f.write(stack_trace)
             # Re-raise the exception if you want the process to exit with an error
             raise e
-
+        finally:
+            backend.teardown()

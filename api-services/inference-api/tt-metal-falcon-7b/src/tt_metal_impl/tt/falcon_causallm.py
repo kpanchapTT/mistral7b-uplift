@@ -9,8 +9,8 @@ from typing import Optional, Tuple
 
 import tt_lib
 
-from models.demos.falcon7b.tt.falcon_model import TtFalconModelShared
-from models.utility_functions import torch2tt_tensor
+from tt_metal_impl.tt.falcon_model import TtFalconModelShared
+from tt_metal_impl.utility_functions import torch2tt_tensor
 
 
 class TtFalconCausalLM(TtFalconModelShared):

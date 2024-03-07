@@ -9,7 +9,7 @@ from typing import Optional, Tuple
 
 import tt_lib
 
-from models.utility_functions import (
+from tt_metal_impl.utility_functions import (
     torch2tt_tensor,
     tt2torch_tensor,
     pad_by_zero,

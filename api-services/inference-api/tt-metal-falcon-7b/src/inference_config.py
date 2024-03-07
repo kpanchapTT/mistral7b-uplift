@@ -27,21 +27,21 @@ InferenceConfig = namedtuple(
         "backend_debug_mode",
         "frontend_debug_mode",
         "mock_model",
-        "falcon_config",
+        # "falcon_config",
     ],
 )
 
-FalconConfig = namedtuple(
-    "FalconConfig",
-    [
-        "use2layer",
-        "pytorch_no_weights",
-        "save",
-        "load",
-        "log_level_debug",
-        "tti_suffix",
-    ],
-)
+# FalconConfig = namedtuple(
+#     "FalconConfig",
+#     [
+#         "use2layer",
+#         "pytorch_no_weights",
+#         "save",
+#         "load",
+#         "log_level_debug",
+#         "tti_suffix",
+#     ],
+# )
 
 # Do as much environment variable termination here as possible.
 # The exception is secrets, which are used directly as os.getenv() calls.
@@ -51,14 +51,6 @@ SERVICE_PORT = int(os.getenv("SERVICE_PORT", 7000))
 MOCK_MODEL = bool(int(os.getenv("MOCK_MODEL", 0)))
 BACKEND_DEBUG_MODE = bool(int(os.getenv("BACKEND_DEBUG_MODE", 0)))
 FRONTEND_DEBUG_MODE = bool(int(os.getenv("FRONTEND_DEBUG_MODE", 0)))
-FALCON_40B_2LAYER = bool(int(os.environ.get("FALCON_40B_2LAYER", "0")))
-FALCON_40B_PYTORCH_NO_WEIGHTS = bool(
-    int(os.environ.get("FALCON_40B_PYTORCH_NO_WEIGHTS", "0"))
-)
-FALCON_40B_SAVE = bool(int(os.getenv("FALCON_40B_SAVE", "0")))
-FALCON_40B_LOAD = bool(int(os.getenv("FALCON_40B_LOAD", "0")))
-FALCON_40B_LOG_LEVEL_DEBUG = bool(int(os.getenv("FALCON_40B_LOG_LEVEL_DEBUG", "0")))
-FALCON_40B_TTI_SUFFIX = os.getenv("FALCON_40B_TTI_SUFFIX", "v0")
 
 inference_config = InferenceConfig(
     hf_cache=f"{CACHE_ROOT}/hf_cache",
@@ -74,14 +66,14 @@ inference_config = InferenceConfig(
     backend_debug_mode=BACKEND_DEBUG_MODE,
     frontend_debug_mode=FRONTEND_DEBUG_MODE,
     mock_model=MOCK_MODEL,
-    falcon_config=FalconConfig(
-        use2layer=FALCON_40B_2LAYER,
-        pytorch_no_weights=FALCON_40B_PYTORCH_NO_WEIGHTS,
-        save=FALCON_40B_SAVE,
-        load=FALCON_40B_LOAD,
-        log_level_debug=FALCON_40B_LOG_LEVEL_DEBUG,
-        tti_suffix=FALCON_40B_TTI_SUFFIX,
-    ),
+    # falcon_config=FalconConfig(
+    #     use2layer=FALCON_40B_2LAYER,
+    #     pytorch_no_weights=FALCON_40B_PYTORCH_NO_WEIGHTS,
+    #     save=FALCON_40B_SAVE,
+    #     load=FALCON_40B_LOAD,
+    #     log_level_debug=FALCON_40B_LOG_LEVEL_DEBUG,
+    #     tti_suffix=FALCON_40B_TTI_SUFFIX,
+    # ),
 )
 
 print("using inference_config:\n")

@@ -7,17 +7,17 @@ import pytest
 from loguru import logger
 
 import tt_lib
-from models.demos.falcon7b.reference.hf_modeling_falcon import (
+from tt_metal_impl.reference.hf_modeling_falcon import (
     FalconForCausalLM,
 )
-from models.demos.falcon7b.tt.falcon_causallm import TtFalconCausalLM
+from tt_metal_impl.tt.falcon_causallm import TtFalconCausalLM
 
 # TODO: Remove this?
-from models.demos.falcon7b.tt.falcon_common import (
+from tt_metal_impl.tt.falcon_common import (
     PytorchFalconCausalLM,
 )
 
-from models.demos.falcon7b.tt.model_config import (
+from tt_metal_impl.tt.model_config import (
     get_model_config,
     get_tt_cache_path,
 )
@@ -25,7 +25,7 @@ from models.demos.falcon7b.tt.model_config import (
 from tests.tt_eager.python_api_testing.sweep_tests.comparison_funcs import (
     comp_pcc,
 )
-from models.utility_functions import (
+from tt_metal_impl.utility_functions import (
     torch2tt_tensor,
     tt2torch_tensor,
     profiler,

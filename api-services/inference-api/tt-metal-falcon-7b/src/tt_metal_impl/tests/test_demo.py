@@ -2,7 +2,7 @@
 
 # SPDX-License-Identifier: Apache-2.0
 
-from models.demos.falcon7b.demo.demo import test_demo as demo
+from tt_metal_impl.demo.demo import test_demo as demo
 import pytest
 from loguru import logger
 import json

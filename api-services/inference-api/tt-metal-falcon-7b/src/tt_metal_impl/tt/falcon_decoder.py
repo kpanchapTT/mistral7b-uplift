@@ -9,9 +9,9 @@ from typing import Optional, Tuple
 
 import tt_lib
 
-from models.demos.falcon7b.tt.falcon_attention import TtFalconAttention
-from models.demos.falcon7b.tt.falcon_mlp import TtFalconMLP
-from models.utility_functions import pad_by_zero
+from tt_metal_impl.tt.falcon_attention import TtFalconAttention
+from tt_metal_impl.tt.falcon_mlp import TtFalconMLP
+from tt_metal_impl.utility_functions import pad_by_zero
 
 
 class TtFalconDecoderLayer(nn.Module):
