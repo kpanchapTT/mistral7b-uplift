@@ -5,9 +5,9 @@ ENV SHELL=/bin/bash
 USER root
 WORKDIR /tmp/install
 
-# ## set timezone
 ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
+
 RUN apt update && apt install -y \
     ## TT-Metalium Backend Dependencies: https://github.com/tenstorrent-metal/tt-metal/blob/main/INSTALLING.md#installing-dependencies-on-ubuntu-before-accelerator-level
     software-properties-common=0.99.9.12 \
@@ -45,27 +45,16 @@ RUN apt update && apt install -y \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
-## clone tt-metal and its submodules
-ARG APP_DIR=/tt-metal-falcon-7b
-ARG HOME_DIR=/home/user
-WORKDIR ${HOME_DIR}
-
 ## add user
 RUN useradd -u 1000 -s /bin/bash user
 RUN chown -R user:user ${HOME_DIR}
 
 USER user
+ARG APP_DIR=/tt-metal-falcon-7b
+ARG HOME_DIR=/home/user
+WORKDIR ${HOME_DIR}
 
-ENV PATH=$PATH:${HOME_DIR}/.local/bin
-ENV ARCH_NAME=grayskull
-# ENV ARCH_NAME=wormhole_b0
-ENV TT_METAL_HOME=${HOME_DIR}/tt-metal
-ENV TT_METAL_ENV=dev
-ENV PYTHONPATH=${HOME_DIR}/tt-metal
-# NOTE: production build is not documented, unclear if functional
-# ENV TT_METAL_ENV=production
-# ENV TT_METAL_CREATE_STATIC_LIB=1
-
+## clone tt-metal and its submodules
 RUN git clone https://github.com/tenstorrent-metal/tt-metal.git \
     --depth 1 \
     --recurse-submodules \
@@ -76,12 +65,26 @@ RUN git clone https://github.com/tenstorrent-metal/tt-metal.git \
 
 ## build tt-metal
 WORKDIR ${HOME_DIR}/tt-metal
-RUN pip config set global.extra-index-url https://download.pytorch.org/whl/cpu
-RUN make build
+ENV PATH=$PATH:${HOME_DIR}/.local/bin
+ENV ARCH_NAME=grayskull
+# ENV ARCH_NAME=wormhole_b0
+ENV TT_METAL_HOME=${HOME_DIR}/tt-metal
+ENV TT_METAL_ENV=dev
+ENV PYTHONPATH=${HOME_DIR}/tt-metal
+# NOTE: production build is not documented
+# ENV TT_METAL_ENV=production
+# ENV TT_METAL_CREATE_STATIC_LIB=1
+RUN pip config set global.extra-index-url https://download.pytorch.org/whl/cpu && \
+    make build
 
-WORKDIR "${HOME_DIR}/${APP_DIR}/src"
+# install app requirements
+WORKDIR "${HOME_DIR}/${APP_DIR}"
 COPY "src" "${HOME_DIR}/${APP_DIR}/src"
+COPY "requirements.txt" "${HOME_DIR}/${APP_DIR}/requirements.txt"
+RUN pip install --default-timeout=240 --no-cache-dir -r requirements.txt 
 
+# run app via gunicorn
+WORKDIR "${HOME_DIR}/${APP_DIR}/src"
 CMD ["gunicorn", "--config", "gunicorn.conf.py"]
 
 # default port is 7000
