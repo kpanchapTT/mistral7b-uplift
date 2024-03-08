@@ -65,37 +65,37 @@ api_log_dir = os.path.join(inference_config.log_cache, "api_logs")
 
 def get_backend_override_args():
     # terminate env vars and pass to switching logic with simple logging
-    use_2_layers = inference_config.falcon_config.use2layer
-    pytorch_no_weights = inference_config.falcon_config.pytorch_no_weights
-    save_tti = inference_config.falcon_config.save
-    load_tti = inference_config.falcon_config.load
-    log_level_debug = inference_config.falcon_config.log_level_debug
-    tti_suffix = inference_config.falcon_config.tti_suffix
-    use_60_layers = not use_2_layers and not pytorch_no_weights
-    tti_name = (
-        f"flash_decode_60l_{tti_suffix}.tti"
-        if use_60_layers
-        else f"flash_decode_2l_{tti_suffix}_test.tti"
-    )
-    tti_path = os.path.join(inference_config.tti_cache, tti_name)
-    logger.info(
-        f"getting overrides for:\n use_60_layers={use_60_layers},\n use_2_layers={use_2_layers},\n pytorch_no_weights={pytorch_no_weights},\n save_tti={save_tti},\n load_tti={load_tti},\n log_level_debug={log_level_debug},\n tti_name={tti_name}\n"
-    )
-    if save_tti:
-        assert not os.path.exists(
-            tti_path
-        ), f"provided tti path exists: {tti_path}, cannot save over existing tti"
-    elif load_tti:
-        assert os.path.exists(
-            tti_path
-        ), f"provided tti path does not exist: {tti_path}, cannot load tti"
-    assert not (
-        pytorch_no_weights and save_tti
-    ), "cannot save_tti with pytorch_no_weights."
-    if pytorch_no_weights or use_2_layers:
-        logger.warning(
-            f"WARNING: pytorch_no_weights={pytorch_no_weights}, use_2_layers={use_2_layers} is run for debug and testing only."
-        )
+    # use_2_layers = inference_config.falcon_config.use2layer
+    # pytorch_no_weights = inference_config.falcon_config.pytorch_no_weights
+    # save_tti = inference_config.falcon_config.save
+    # load_tti = inference_config.falcon_config.load
+    # log_level_debug = inference_config.falcon_config.log_level_debug
+    # tti_suffix = inference_config.falcon_config.tti_suffix
+    # use_60_layers = not use_2_layers and not pytorch_no_weights
+    # tti_name = (
+    #     f"flash_decode_60l_{tti_suffix}.tti"
+    #     if use_60_layers
+    #     else f"flash_decode_2l_{tti_suffix}_test.tti"
+    # )
+    # tti_path = os.path.join(inference_config.tti_cache, tti_name)
+    # logger.info(
+    #     f"getting overrides for:\n use_60_layers={use_60_layers},\n use_2_layers={use_2_layers},\n pytorch_no_weights={pytorch_no_weights},\n save_tti={save_tti},\n load_tti={load_tti},\n log_level_debug={log_level_debug},\n tti_name={tti_name}\n"
+    # )
+    # if save_tti:
+    #     assert not os.path.exists(
+    #         tti_path
+    #     ), f"provided tti path exists: {tti_path}, cannot save over existing tti"
+    # elif load_tti:
+    #     assert os.path.exists(
+    #         tti_path
+    #     ), f"provided tti path does not exist: {tti_path}, cannot load tti"
+    # assert not (
+    #     pytorch_no_weights and save_tti
+    # ), "cannot save_tti with pytorch_no_weights."
+    # if pytorch_no_weights or use_2_layers:
+    #     logger.warning(
+    #         f"WARNING: pytorch_no_weights={pytorch_no_weights}, use_2_layers={use_2_layers} is run for debug and testing only."
+    #     )
     # TODO
     override_args = None
     logger.info(override_args)
@@ -123,7 +123,7 @@ def initialize_decode_backend(override_args):
         ),
     )
     backend_process.start()
-    default_params, _ = get_user_parameters({})
+    default_params, _ = get_user_parameters({"max_tokens": 4})
     input_queue.put((INIT_ID, "Dummy input for initialization", default_params))
     respond_to_users_thread = threading.Thread(target=respond_to_users)
     respond_to_users_thread.start()
@@ -208,7 +208,7 @@ def status_func():
         ):
             session_id = "KEEP-ALIVE-INPUT"
             prompt = "the"
-            params, _ = get_user_parameters(data={"max_tokens": 0})
+            params, _ = get_user_parameters(data={"max_tokens": 2})
             input_queue.put((session_id, prompt, params))
             time_last_keep_alive_input = time.time()
             logger.info(

@@ -15,8 +15,6 @@ InferenceConfig = namedtuple(
     "InferenceConfig",
     [
         "hf_cache",
-        "tvm_cache",
-        "tti_cache",
         "log_cache",
         "max_input_qsize",
         "input_timeout",
@@ -54,8 +52,6 @@ FRONTEND_DEBUG_MODE = bool(int(os.getenv("FRONTEND_DEBUG_MODE", 0)))
 
 inference_config = InferenceConfig(
     hf_cache=f"{CACHE_ROOT}/hf_cache",
-    tvm_cache=f"{CACHE_ROOT}/tvm_cache",
-    tti_cache=f"{CACHE_ROOT}/tti_cache",
     log_cache=f"{CACHE_ROOT}/logs",
     max_input_qsize=4,  # last in queue can get response before request timeout
     input_timeout=30,  # input q backpressure, timeout in seconds
