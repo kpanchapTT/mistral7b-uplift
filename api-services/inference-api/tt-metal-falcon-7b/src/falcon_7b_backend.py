@@ -591,7 +591,7 @@ def run_backend(prompt_q, output_q, status_q, arg_overrides, verbose=True):
             "batch_size": 32,
             "num_layers": 32,
             "max_seq_len": 1024,
-            "cache_root": Path("/mnt/mldata/test_cache_root"),
+            "cache_root": arg_overrides["cache_root"],
         }
         backend = PrefillDecodeBackend(**kwargs, verbose=verbose)
         try:

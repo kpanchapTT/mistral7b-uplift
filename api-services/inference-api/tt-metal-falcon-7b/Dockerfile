@@ -46,13 +46,13 @@ RUN apt update && apt install -y \
     && rm -rf /var/lib/apt/lists/*
 
 ## add user
+ARG APP_DIR=/tt-metal-falcon-7b
+ARG HOME_DIR=/home/user
 RUN useradd -u 1000 -s /bin/bash user
+WORKDIR ${HOME_DIR}
 RUN chown -R user:user ${HOME_DIR}
 
 USER user
-ARG APP_DIR=/tt-metal-falcon-7b
-ARG HOME_DIR=/home/user
-WORKDIR ${HOME_DIR}
 
 ## clone tt-metal and its submodules
 RUN git clone https://github.com/tenstorrent-metal/tt-metal.git \
@@ -81,11 +81,11 @@ RUN pip config set global.extra-index-url https://download.pytorch.org/whl/cpu &
 WORKDIR "${HOME_DIR}/${APP_DIR}"
 COPY "src" "${HOME_DIR}/${APP_DIR}/src"
 COPY "requirements.txt" "${HOME_DIR}/${APP_DIR}/requirements.txt"
-RUN pip install --default-timeout=240 --no-cache-dir -r requirements.txt 
+RUN /bin/bash -c "source ${HOME_DIR}/tt-metal/build/python_env/bin/activate && pip install --default-timeout=240 --no-cache-dir -r requirements.txt" 
 
 # run app via gunicorn
 WORKDIR "${HOME_DIR}/${APP_DIR}/src"
-CMD ["gunicorn", "--config", "gunicorn.conf.py"]
+CMD ["/bin/bash", "-c", "source /home/user/tt-metal/build/python_env/bin/activate && gunicorn --config gunicorn.conf.py"]
 
 # default port is 7000
 ENV SERVICE_PORT=7000 

@@ -65,39 +65,9 @@ api_log_dir = os.path.join(inference_config.log_cache, "api_logs")
 
 def get_backend_override_args():
     # terminate env vars and pass to switching logic with simple logging
-    # use_2_layers = inference_config.falcon_config.use2layer
-    # pytorch_no_weights = inference_config.falcon_config.pytorch_no_weights
-    # save_tti = inference_config.falcon_config.save
-    # load_tti = inference_config.falcon_config.load
-    # log_level_debug = inference_config.falcon_config.log_level_debug
-    # tti_suffix = inference_config.falcon_config.tti_suffix
-    # use_60_layers = not use_2_layers and not pytorch_no_weights
-    # tti_name = (
-    #     f"flash_decode_60l_{tti_suffix}.tti"
-    #     if use_60_layers
-    #     else f"flash_decode_2l_{tti_suffix}_test.tti"
-    # )
-    # tti_path = os.path.join(inference_config.tti_cache, tti_name)
-    # logger.info(
-    #     f"getting overrides for:\n use_60_layers={use_60_layers},\n use_2_layers={use_2_layers},\n pytorch_no_weights={pytorch_no_weights},\n save_tti={save_tti},\n load_tti={load_tti},\n log_level_debug={log_level_debug},\n tti_name={tti_name}\n"
-    # )
-    # if save_tti:
-    #     assert not os.path.exists(
-    #         tti_path
-    #     ), f"provided tti path exists: {tti_path}, cannot save over existing tti"
-    # elif load_tti:
-    #     assert os.path.exists(
-    #         tti_path
-    #     ), f"provided tti path does not exist: {tti_path}, cannot load tti"
-    # assert not (
-    #     pytorch_no_weights and save_tti
-    # ), "cannot save_tti with pytorch_no_weights."
-    # if pytorch_no_weights or use_2_layers:
-    #     logger.warning(
-    #         f"WARNING: pytorch_no_weights={pytorch_no_weights}, use_2_layers={use_2_layers} is run for debug and testing only."
-    #     )
-    # TODO
-    override_args = None
+    override_args = {
+        "cache_root": os.getenv("CACHE_ROOT"),
+    }
     logger.info(override_args)
     return override_args
 
