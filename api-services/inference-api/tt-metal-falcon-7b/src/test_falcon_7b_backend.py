@@ -69,7 +69,7 @@ def test_falcon_7b_backend():
 
     # user_id, prompt, params
     default_params, _ = get_user_parameters({})
-    prompt_q.put(("INIT_ID", "Dummy input for initialization", default_params))
+    prompt_q.put(("INIT_ID", "How do you get to Carnegie Hall?", default_params))
     arg_overrides = None
     run_backend(prompt_q, output_q, status_q, arg_overrides, verbose=False)
     print("finished")
