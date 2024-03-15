@@ -177,7 +177,7 @@ def torch2tt_tensor(
 
 def tt2torch_tensor(tt_tensor):
     tt_output = tt_tensor.cpu()
-    if tt_output.layout() != tt_lib.tensor.Layout.ROW_MAJOR:
+    if tt_output.get_layout() != tt_lib.tensor.Layout.ROW_MAJOR:
         tt_output = tt_output.to(tt_lib.tensor.Layout.ROW_MAJOR)
     return tt_output.to_torch()
 
@@ -249,11 +249,11 @@ def pad_by_zero(
 
 
 def unpad_from_zero(x, desired_shape):
-    if x.shape()[-1] == desired_shape[-1] and x.shape()[-2] == desired_shape[-2]:
+    if x.get_legacy_shape()[-1] == desired_shape[-1] and x.get_legacy_shape()[-2] == desired_shape[-2]:
         x = tt2torch_tensor(x)
     else:
         x = x.cpu()
-        if x.layout() != tt_lib.tensor.Layout.ROW_MAJOR:
+        if x.get_layout() != tt_lib.tensor.Layout.ROW_MAJOR:
             x = x.to(tt_lib.tensor.Layout.ROW_MAJOR)
         x = x.unpad(
             (0, 0, 0, 0),
@@ -542,6 +542,9 @@ def comp_allclose(golden, calculated, rtol=1e-05, atol=1e-08):
 
 
 def comp_pcc(golden, calculated, pcc=0.99):
+    golden = torch.Tensor(golden)
+    calculated = torch.Tensor(calculated)
+
     if golden.dtype != calculated.dtype:
         calculated = calculated.type(golden.dtype)
 
@@ -863,7 +866,7 @@ def run_conv_on_device_wrapper(conv_weight, conv_params, device, conv_bias=None,
     conv_on_device = TtConv(conv_weight, conv_params, device, conv_bias)
 
     def run_conv_on_device(x):
-        [N, C, H, W] = x.shape()
+        [N, C, H, W] = x.get_legacy_shape()
         if N == 1:
             return run_conv_on_device_batch_one(x)
         # need to move on CPU
@@ -880,7 +883,7 @@ def run_conv_on_device_wrapper(conv_weight, conv_params, device, conv_bias=None,
         return conv_concat
 
     def run_conv_on_device_batch_one(x):
-        [N, C, H, W] = x.shape()
+        [N, C, H, W] = x.get_legacy_shape()
         if channel_transpose:
             # n c h w -> n h w c
             x = tt_lib.tensor.transpose(x, 1, -2)
@@ -915,11 +918,11 @@ def run_conv_on_device_wrapper(conv_weight, conv_params, device, conv_bias=None,
         )
 
         logger.info("Going to run conv on tt device")
-        if x.layout() != tt_lib.tensor.Layout.ROW_MAJOR:
+        if x.get_layout() != tt_lib.tensor.Layout.ROW_MAJOR:
             x = tt_lib.tensor.untilize(x)
         else:
-            x_padded_shape = list(x.shape())
-            x_padded_shape[-1] = roundup(x.shape()[-1], 16)
+            x_padded_shape = list(x.get_legacy_shape())
+            x_padded_shape[-1] = roundup(x.get_legacy_shape()[-1], 16)
             x = tt_lib.tensor.pad(x, x_padded_shape, [0, 0, 0, 0], 0)
         x = conv_on_device(x)
         if channel_transpose:
@@ -954,6 +957,24 @@ def skip_for_wormhole_b0(reason_str="not working for Wormhole B0"):
 
 def skip_for_grayskull(reason_str="not working for Grayskull"):
     return pytest.mark.skipif(is_grayskull(), reason=reason_str)
+
+
+def get_devices_for_t3000(all_devices, num_devices):
+    """
+    all_devices comes from fixture which devices in order from 0 to 7.
+    First 4 devices are PCIE devices so we can just extract and return.
+    For 8 devices, return in a ring pattern.
+    """
+    assert num_devices <= len(all_devices), "Not enough devices detected!"
+
+    if num_devices <= 4:
+        return all_devices[:num_devices]
+    elif num_devices == 8:
+        # TODO: Generalize this for different arch
+        hamiltonian_ring_indices = [0, 7, 6, 1, 2, 5, 4, 3]
+        return [all_devices[i] for i in hamiltonian_ring_indices]
+    else:
+        raise NotImplementedError("Only supports 1, 2, 3, 4, and 8 chip configurations!")
 
 
 def ttl_complex_2_torch_complex(tt_tensor):

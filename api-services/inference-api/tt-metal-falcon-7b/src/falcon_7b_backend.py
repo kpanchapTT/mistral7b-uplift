@@ -39,6 +39,7 @@ if not os.environ.get("MOCK_MODEL"):
         profiler,
         torch2tt_tensor,
         tt2torch_tensor,
+        nearest_32,
     )
     from transformers.generation.utils import top_k_top_p_filtering
 
@@ -76,6 +77,10 @@ def preprocess_and_validate_inputs(input_prompts, tokenizer, max_seq_len):
 
     logger.info(f"# of users: {num_users}")
     logger.info(f"# of input tokens per user: {num_input_tokens}")
+
+    prefill_ids = prefill_ids[
+        :, : nearest_32(num_input_tokens)
+    ]  # only pad up to nearest 32, not max seq len
 
     return prefill_ids, num_users, num_input_tokens
 

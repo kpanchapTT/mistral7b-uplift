@@ -49,13 +49,18 @@ class TtFalconRotaryEmbedding(torch.nn.Module):
         emb = torch.cat((freqs, freqs), dim=-1)
 
         layer_name = f"{base_url}.{layer_num}.rotary_embedding"
-        if (
+        overwrite_cos, overwrite_sin = False, False
+        cos_exists = (
             tt_cache_path / f"{layer_name}.cos_cached_{self.model_config['COS_CACHED_WEIGHTS_DTYPE'].name}.bin"
-        ).exists():
+        ).exists()
+        if cos_exists:
             self.tt_cos_cached = tt_lib.tensor.load_tensor(
                 str(tt_cache_path / f"{layer_name}.cos_cached_{self.model_config['COS_CACHED_WEIGHTS_DTYPE'].name}.bin")
             ).to(tt_device, self.model_config["COS_CACHED_WEIGHTS_MEMCFG"])
-        else:
+            overwrite_cos = (
+                tt2torch_tensor(self.tt_cos_cached).shape[-2] != self.max_seq_len_cached
+            )  # Verify cached tensor has same max seq len
+        if not cos_exists or overwrite_cos:
             self.tt_cos_cached = torch2tt_tensor(
                 emb.cos()[None, None, :, :],
                 tt_device,
@@ -68,13 +73,17 @@ class TtFalconRotaryEmbedding(torch.nn.Module):
                 ),
                 self.tt_cos_cached.cpu(),
             )
-        if (
+        sin_exists = (
             tt_cache_path / f"{layer_name}.sin_cached_{self.model_config['SIN_CACHED_WEIGHTS_DTYPE'].name}.bin"
-        ).exists():
+        ).exists()
+        if sin_exists:
             self.tt_sin_cached = tt_lib.tensor.load_tensor(
                 str(tt_cache_path / f"{layer_name}.sin_cached_{self.model_config['SIN_CACHED_WEIGHTS_DTYPE'].name}.bin")
             ).to(tt_device, self.model_config["SIN_CACHED_WEIGHTS_MEMCFG"])
-        else:
+            overwrite_sin = (
+                tt2torch_tensor(self.tt_sin_cached).shape[-2] != self.max_seq_len_cached
+            )  # Verify cached tensor has same max seq len
+        if not sin_exists or overwrite_sin:
             self.tt_sin_cached = torch2tt_tensor(
                 emb.sin()[None, None, :, :],
                 tt_device,
@@ -89,7 +98,7 @@ class TtFalconRotaryEmbedding(torch.nn.Module):
             )
 
     def forward(self, layer: tt_lib.tensor.Tensor, token_idx: Optional[int] = None) -> tt_lib.tensor.Tensor:
-        seq_len = layer.shape()[2]
+        seq_len = layer.get_legacy_shape()[2]
         assert seq_len <= self.max_seq_len_cached, "seq_len exceeds max_seq_len_cached in RotaryEmbedding!"
 
         return tt_lib.tensor.rotary_embedding(
@@ -212,12 +221,12 @@ class TtFalconAttention(nn.Module):
         assert not output_attentions
 
         if llm_mode == "prefill":
-            batch = hidden_states.shape()[0]
-            q_len = hidden_states.shape()[2]
+            batch = hidden_states.get_legacy_shape()[0]
+            q_len = hidden_states.get_legacy_shape()[2]
             assert layer_past is not None
         elif llm_mode == "decode":
-            batch = hidden_states.shape()[2]
-            q_len = hidden_states.shape()[0]
+            batch = hidden_states.get_legacy_shape()[2]
+            q_len = hidden_states.get_legacy_shape()[0]
             # We always store max_position_embeddings for kv_cache,
             # so we need separate variable to store the actual len of the kv_cache
             assert layer_past is not None

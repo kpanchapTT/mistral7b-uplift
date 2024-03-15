@@ -66,20 +66,14 @@ def get_operationID(api_path):
 def get_components():
     return {
         "securitySchemes": {
-            "apiKeyHeader": {
-                "type": "apiKey",
-                "name": "Authorization",
-                "in": "header"
-            }
+            "apiKeyHeader": {"type": "apiKey", "name": "Authorization", "in": "header"}
         }
     }
 
+
 def get_security():
-    return [
-        {
-            "apiKeyHeader": []
-        }
-    ]
+    return [{"apiKeyHeader": []}]
+
 
 if __name__ == "__main__":
     environments = [
@@ -166,7 +160,7 @@ if __name__ == "__main__":
                 for api in var_env_map[env]["apis"]
             },
             "components": get_components(),
-            "security": get_security()
+            "security": get_security(),
         }
         fpath = Path(__file__).parent / env / f"{env}_tenstorrent_llm_openapi_v3.json"
         with open(fpath, "w") as f:

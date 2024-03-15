@@ -55,19 +55,17 @@ RUN chown -R user:user ${HOME_DIR}
 USER user
 
 ## clone tt-metal and its submodules
-RUN git clone https://github.com/tenstorrent-metal/tt-metal.git \
-    --depth 1 \
-    --recurse-submodules \
-    --shallow-submodules \
-    --branch v0.44.0 && \
+RUN git clone https://github.com/tenstorrent-metal/tt-metal.git && \
     cd tt-metal && \
+    git checkout ffbe64d9 && \
+    git submodule update --init --recursive && \
     git submodule foreach 'git lfs fetch --all && git lfs pull'
 
 ## build tt-metal
 WORKDIR ${HOME_DIR}/tt-metal
 ENV PATH=$PATH:${HOME_DIR}/.local/bin
-ENV ARCH_NAME=grayskull
-# ENV ARCH_NAME=wormhole_b0
+# ENV ARCH_NAME=grayskull
+ENV ARCH_NAME=wormhole_b0
 ENV TT_METAL_HOME=${HOME_DIR}/tt-metal
 ENV TT_METAL_ENV=dev
 ENV PYTHONPATH=${HOME_DIR}/tt-metal

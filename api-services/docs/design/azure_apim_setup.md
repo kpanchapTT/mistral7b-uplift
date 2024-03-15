@@ -22,9 +22,9 @@
 3. Set Named values:
 
 **note:** underscores "_" cannot be used in named values, only hypens "-" can be
-* BACKEND-JWT: internal backend JWT
-* BACKEND-URL: internal backend deployment URL
-* BACKEND-ROUTE: internal backend deployment route for inference API, e.g. /inference/falcon40b
+* TT-BUDA-FALCON-40B-INFERENCE-JWT: internal backend JWT
+* TT-BUDA-FALCON-40B-INFERENCE-URL: internal backend deployment URL
+* TT-BUDA-FALCON-40B-INFERENCE-ROUTE: internal backend deployment route for inference API, e.g. /inference/falcon40b
 ![](azure_apim_screens/set_named_values.png)
 
 4. Set API Policies <>:
@@ -36,11 +36,11 @@ change polices in XML to:
 <policies>
     <inbound>
         <base />
-        <set-backend-service base-url="{{BACKEND-URL}}" />
+        <set-backend-service base-url="{{TT-BUDA-FALCON-40B-INFERENCE-URL}}" />
         <set-header name="Authorization" exists-action="override">
-            <value>Bearer {{BACKEND-JWT}}</value>
+            <value>{{TT-BUDA-FALCON-40B-INFERENCE-JWT}}</value>
         </set-header>
-        <rewrite-uri template="{{BACKEND-ROUTE}}" />
+        <rewrite-uri template="{{TT-BUDA-FALCON-40B-INFERENCE-ROUTE}}" />
     </inbound>
     <backend>
         <forward-request http-version="2" timeout="300" fail-on-error-status-code="true" buffer-response="false" />
