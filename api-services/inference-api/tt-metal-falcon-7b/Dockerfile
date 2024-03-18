@@ -1,4 +1,6 @@
-FROM ubuntu:20.04
+# Build stage
+FROM ubuntu:20.04 as builder
+LABEL maintainer="Tom Stesco <tstesco@tenstorrent.com>"
 
 ENV SHELL=/bin/bash
 
@@ -48,21 +50,15 @@ RUN apt update && apt install -y \
 ## add user
 ARG APP_DIR=/tt-metal-falcon-7b
 ARG HOME_DIR=/home/user
-RUN useradd -u 1000 -s /bin/bash user
-WORKDIR ${HOME_DIR}
-RUN chown -R user:user ${HOME_DIR}
+
+RUN useradd -u 1000 -s /bin/bash -d ${HOME_DIR} user && \
+    mkdir -p ${HOME_DIR} && \
+    chown -R user:user ${HOME_DIR}
 
 USER user
-
-## clone tt-metal and its submodules
-RUN git clone https://github.com/tenstorrent-metal/tt-metal.git && \
-    cd tt-metal && \
-    git checkout ffbe64d9 && \
-    git submodule update --init --recursive && \
-    git submodule foreach 'git lfs fetch --all && git lfs pull'
+WORKDIR ${HOME_DIR}
 
 ## build tt-metal
-WORKDIR ${HOME_DIR}/tt-metal
 ENV PATH=$PATH:${HOME_DIR}/.local/bin
 # ENV ARCH_NAME=grayskull
 ENV ARCH_NAME=wormhole_b0
@@ -72,13 +68,22 @@ ENV PYTHONPATH=${HOME_DIR}/tt-metal
 # NOTE: production build is not documented
 # ENV TT_METAL_ENV=production
 # ENV TT_METAL_CREATE_STATIC_LIB=1
-RUN pip config set global.extra-index-url https://download.pytorch.org/whl/cpu && \
-    make build
+
+# clone tt-metal and its submodules
+# remove git data to reduce space post-build
+RUN git clone https://github.com/tenstorrent-metal/tt-metal.git && \
+    cd tt-metal && \
+    git checkout ffbe64d9 && \
+    git submodule update --init --recursive && \
+    git submodule foreach 'git lfs fetch --all && git lfs pull' && \
+    pip config set global.extra-index-url https://download.pytorch.org/whl/cpu && \
+    make build && \
+    rm -rf .git
 
 # install app requirements
 WORKDIR "${HOME_DIR}/${APP_DIR}"
-COPY "src" "${HOME_DIR}/${APP_DIR}/src"
-COPY "requirements.txt" "${HOME_DIR}/${APP_DIR}/requirements.txt"
+COPY --chown=user:user "src" "${HOME_DIR}/${APP_DIR}/src"
+COPY --chown=user:user "requirements.txt" "${HOME_DIR}/${APP_DIR}/requirements.txt"
 RUN /bin/bash -c "source ${HOME_DIR}/tt-metal/build/python_env/bin/activate && pip install --default-timeout=240 --no-cache-dir -r requirements.txt" 
 
 # run app via gunicorn
@@ -86,5 +91,5 @@ WORKDIR "${HOME_DIR}/${APP_DIR}/src"
 CMD ["/bin/bash", "-c", "source /home/user/tt-metal/build/python_env/bin/activate && gunicorn --config gunicorn.conf.py"]
 
 # default port is 7000
-ENV SERVICE_PORT=7000 
+ENV SERVICE_PORT=7000
 HEALTHCHECK --retries=5 --start-period=1s CMD curl -f http://localhost:${SERVICE_PORT}/health || exit 1
