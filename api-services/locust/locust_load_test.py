@@ -36,7 +36,7 @@ TEST_PROMPTS = [
     "Shakespeare, William (bapt. 26 April 1564 - 23 April 1616) was an English",
     "The quality of mercy is not strained",
     "The Deliverator belongs to an elite order, a hallow",
-    "Counting in binary: 0000, 0001, 0010, 0011,"
+    "Counting in binary: 0000, 0001, 0010, 0011,",
 ]
 
 
@@ -53,7 +53,9 @@ class UserPrompt(HttpUser):
     @task
     def test(self):
         prompt_text = TEST_PROMPTS[self.i_sample % self.n_samples]
-        postdata = {"text": prompt_text,}
+        postdata = {
+            "text": prompt_text,
+        }
         headers = {
             "Authorization": self.api_key,
             "content-type": "application/json",

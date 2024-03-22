@@ -4,11 +4,20 @@ OpenAPI: https://www.openapis.org/
 
 We are using OpenAPI v3.0.1 because it is supported by Azure APIM for import and export.
 
+## Update OpenAPI Specification
+
+The spec is templated for the different environments (`local`, `dev`, `prod`) as defined in `generate_openapi_spec.py`:
+```bash
+python generate_openapi_spec.py
+```
+
+See that script for details of templating.
+
 ## Run locally using docker swaggerapi/swagger-ui
 
 See: https://github.com/swagger-api/swagger-ui/blob/master/docs/usage/installation.md#docker
 
-PWD should be `project-falcon/falcon-40b-inference-api`
+PWD should be `project-falcon/api-services`
 
 ```bash
 docker pull swaggerapi/swagger-ui

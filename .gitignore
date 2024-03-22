@@ -42,10 +42,10 @@ local_cache_root/
 .env
 
 # unignore
-!falcon-40b-inference-api/inference-api/requirements.txt
-!falcon-40b-inference-api/inference-api/requirements_dev.txt
-!falcon-40b-inference-api/inference-api/src/test_data/before_top_pk_output.pt
-!falcon-40b-inference-api/inference-api/requirements_minimal.txt
-!falcon-40b-inference-api/inference-api/src/data/multi_prompt.json
-!falcon-40b-inference-api/docs/openapi/prod/tenstorrent_llm_openapi_v3.json
-!falcon-40b-inference-api/docs/openapi/dev/dev_tenstorrent_llm_openapi_v3.json
+!requirements.txt
+!api-services/inference-api/tt-buda-falcon-40b/requirements_dev.txt
+!api-services/inference-api/tt-buda-falcon-40b/src/test_data/before_top_pk_output.pt
+!api-services/inference-api/tt-buda-falcon-40b/requirements_minimal.txt
+!api-services/inference-api/tt-buda-falcon-40b/src/data/multi_prompt.json
+!api-services/docs/openapi/prod/tenstorrent_llm_openapi_v3.json
+!api-services/docs/openapi/dev/dev_tenstorrent_llm_openapi_v3.json

@@ -1,4 +1,4 @@
-# Infereience API
+# TT Buda Falcon 40B Infereience API
 
 ## Development notes
 
@@ -13,7 +13,7 @@ To run locally at maximum iteration speed:
 #### Using Flask debug mode and hot reloading
 
 When using Docker mounted volumes in `/mnt` the hot reloading appears to take a very long time.
-The message ` * Detected change in '/mnt/inference-api/inference_api_server.py', reloading` can be seen
+The message ` * Detected change in '/mnt/tt-buda-falcon-40b/src/inference_api_server.py', reloading` can be seen
 when the feature is configured by 1) setting env var `FLASK_ENV=development`, 2) 
 running the mock inference server with:
 ```python
@@ -77,23 +77,23 @@ curl -X 'POST' \
 use docker compose as instructed above. For testing of just the flask server a mock_backend is available:
 ```bash
 # run in separate terminals or processes
-python inference-api/test_inference_api.py
-python inference-api/test_decode_backend_v1.py
+python src/test_inference_api.py
+python src/test_decode_backend_v1.py
 ```
 
 #### Run model tests
 
 This requires setting up a Galaxy server for deployment then running the test scripts:
 ```bash
-python inference-api/test_decoding.py
+python src/test_decoding.py
 # this requires a running inference server as described above
-python inference-api/test_inference_api.py
+python src/test_inference_api.py
 ```
 
 The 1L pytorch version can also be run as a test application:
 ```bash
 export FALCON_40B_PYTORCH_NO_WEIGHTS='1'
-python inference-api/inference_api_server.py
+python src/inference_api_server.py
 ```
 
 
@@ -117,8 +117,8 @@ gunicorn --config gunicorn.conf.py
 
 # Documentation 
 
-Flask API server frontend documentation: [docs/frontend.md](docs/frontend.md)
-Galaxy Falcon 40B backend documentation: [docs/backend.md](docs/backend.md)
+Flask API server frontend documentation: [../../docs/tt-buda-falcon-40b/frontend.md](../../docs/tt-buda-falcon-40b/frontend.md)
+Galaxy Falcon 40B backend documentation: [../../docs/tt-buda-falcon-40b/backend.md](../../docs/tt-buda-falcon-40b/backend.md)
 
 ## Life cycle of requests
 

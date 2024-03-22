@@ -1,0 +1,7 @@
+# farm-haystack
+flask
+requests
+pyjwt
+flask-cors
+black
+gunicorn
