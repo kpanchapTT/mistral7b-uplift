@@ -72,10 +72,7 @@ def test_falcon_7b_backend():
     default_params, _ = get_user_parameters({"max_tokens": 16})
     prompt_q.put(("INIT_ID-1", "How do you get to Carnegie Hall?", default_params))
     prompt_q.put(("INIT_ID-2", "Another prompt", default_params))
-    arg_overrides = {
-        "cache_root": os.getenv("CACHE_ROOT"),
-    }
-    run_backend(prompt_q, output_q, status_q, arg_overrides, verbose=False)
+    run_backend(prompt_q, output_q, status_q, verbose=False)
     print("finished")
 
 

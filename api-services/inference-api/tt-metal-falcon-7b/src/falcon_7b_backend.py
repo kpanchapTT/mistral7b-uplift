@@ -1,20 +1,13 @@
 import json
 import os
-import random
-from argparse import ArgumentParser
 from multiprocessing import Queue
-
 import json
 import pytest
 from functools import partial
 import torch
-from loguru import logger
 import time
 from pathlib import Path
 from transformers import AutoTokenizer
-import os
-
-
 import traceback
 
 import torch
@@ -29,7 +22,7 @@ if not os.environ.get("MOCK_MODEL"):
     )
     from tt_metal_impl.tt.model_config import (
         get_model_config,
-        get_tt_cache_path,
+        # get_tt_cache_path,
         model_config_entries,
     )
     from tt_metal_impl.utility_functions import (
@@ -104,9 +97,6 @@ def post_process(logits, index):
     return ids
 
 
-post_processor = partial(post_process)
-
-
 class UserInfo:
     def __init__(self, user_id, prompt, position_id, params, tokenizer):
         self.user_id = user_id
@@ -166,10 +156,6 @@ class PrefillDecodeBackend:
         self.num_users = None
         self.users = [None for _ in range(self.max_users)]
         self.use_cache = True
-        # self.top_p = args.top_p
-        # self.top_k = args.top_k
-        # self.temperature = args.temperature
-
         # # inputs to model
         self.decode_ids = None
         # backend status
@@ -187,6 +173,10 @@ class PrefillDecodeBackend:
         #
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_version)
         self.tokenizer.pad_token_id = 0
+        self.post_processor = partial(post_process)
+        self.default_top_p = inference_config.falcon_config.default_top_p
+        self.default_top_k = inference_config.falcon_config.default_top_k
+        self.default_temperature = inference_config.falcon_config.default_temperature
         #
         self.device = None
         self.cache_root = Path(cache_root)
@@ -376,7 +366,6 @@ class PrefillDecodeBackend:
 
     def prefill(self):
         logger.info("Running prefill ...")
-        # post_processor = partial(post_process)
         self.prefill_output_ids = torch.zeros(self.num_users, 1, dtype=torch.int64)
         for user_idx, user_info in enumerate(self.get_users()):
             if user_info.prefill_complete:
@@ -413,10 +402,9 @@ class PrefillDecodeBackend:
             tt_logits.deallocate()
 
             # TODO: can we actually use the first token generated via prefill?
-            user_output_ids = post_processor(
+            user_output_ids = self.post_processor(
                 logits=logits, index=self.num_input_tokens - 1
             )
-            self.prefill_output_ids[user_idx] = user_output_ids
             user_info.prefill_complete = True
 
         self.decode_ids = torch.zeros(self.batch_size, 1, dtype=torch.int64)
@@ -459,7 +447,26 @@ class PrefillDecodeBackend:
         tt_logits.deallocate()
 
         # TODO: add top p top k
-        self.decode_ids = post_processor(logits=logits, index=...).reshape(
+        # self.decode_ids = self.post_processor(logits=logits, index=...).reshape(
+        #     self.batch_size, 1
+        # )
+        top_ps = [
+            user.generation_params["top_p"] if user is not None else self.default_top_p
+            for user in self.users
+        ]
+        top_ks = [
+            user.generation_params["top_k"] if user is not None else self.default_top_k
+            for user in self.users
+        ]
+        temperatures = [
+            (
+                user.generation_params["temperature"]
+                if user is not None
+                else self.default_temperature
+            )
+            for user in self.users
+        ]
+        self.decode_ids = batch_top_pk_logits_efficient(logits, top_ps, top_ks, temperatures).reshape(
             self.batch_size, 1
         )
 
@@ -571,11 +578,13 @@ def batch_top_pk_logits_efficient(
     logits, top_ps=[0.9], top_ks=[10], temperatures=[1.0], return_probs=False
 ):
     out_tokens = []
-    for b_logits, p, k, temperature in zip(logits, top_ps, top_ks, temperatures):
+    for b_logits, p, k, temperature in zip(logits[0], top_ps, top_ks, temperatures):
         # do not keep the entire vocab size after top k. Instead, keep the k size tensor and record the associated indices
         top_k_values, top_k_indices = torch.topk(b_logits.unsqueeze(0), k=k)
         top_p_values = top_k_top_p_filtering(top_k_values, top_p=p)
         probs = F.softmax(top_p_values / temperature, dim=-1)
+        # if torch.isinf(probs).any() or torch.isnan(probs).any():
+        #     breakpoint()
         top_k_id = torch.multinomial(probs, num_samples=1).squeeze(-1)
         token = top_k_indices.gather(-1, top_k_id.unsqueeze(-1)).squeeze(-1)
         if return_probs:
@@ -591,14 +600,14 @@ def run_backend(prompt_q, output_q, status_q, arg_overrides, verbose=True):
     logger.info("starting run_backend ...")
     with torch.no_grad():
         # TODO: wire out these kwargs to arg_overrides, rename
-        kwargs = {
-            "model_version": "tiiuae/falcon-7b-instruct",
-            "batch_size": 32,
-            "num_layers": 32,
-            "max_seq_len": 1024,
-            "cache_root": arg_overrides["cache_root"],
-        }
-        backend = PrefillDecodeBackend(**kwargs, verbose=verbose)
+        backend = PrefillDecodeBackend(
+            model_version=inference_config.falcon_config.model_version,
+            batch_size=inference_config.falcon_config.batch_size,
+            num_layers=inference_config.falcon_config.num_layers,
+            max_seq_len=inference_config.falcon_config.max_seq_len,
+            cache_root=arg_overrides["cache_root"],
+            verbose=verbose,
+        )
         try:
             # run generate
             backend.run_generate(prompt_q, output_q, status_q)

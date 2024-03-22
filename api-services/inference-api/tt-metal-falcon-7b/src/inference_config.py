@@ -14,6 +14,7 @@ def get_env_var(var, msg):
 InferenceConfig = namedtuple(
     "InferenceConfig",
     [
+        "cache_root",
         "hf_cache",
         "log_cache",
         "max_input_qsize",
@@ -25,21 +26,22 @@ InferenceConfig = namedtuple(
         "backend_debug_mode",
         "frontend_debug_mode",
         "mock_model",
-        # "falcon_config",
+        "falcon_config",
     ],
 )
 
-# FalconConfig = namedtuple(
-#     "FalconConfig",
-#     [
-#         "use2layer",
-#         "pytorch_no_weights",
-#         "save",
-#         "load",
-#         "log_level_debug",
-#         "tti_suffix",
-#     ],
-# )
+FalconConfig = namedtuple(
+    "FalconConfig",
+    [
+        "model_version",
+        "batch_size",
+        "num_layers",
+        "max_seq_len",
+        "default_top_p",
+        "default_top_k",
+        "default_temperature",
+    ],
+)
 
 # Do as much environment variable termination here as possible.
 # The exception is secrets, which are used directly as os.getenv() calls.
@@ -51,6 +53,7 @@ BACKEND_DEBUG_MODE = bool(int(os.getenv("BACKEND_DEBUG_MODE", 0)))
 FRONTEND_DEBUG_MODE = bool(int(os.getenv("FRONTEND_DEBUG_MODE", 0)))
 
 inference_config = InferenceConfig(
+    cache_root=CACHE_ROOT,
     hf_cache=f"{CACHE_ROOT}/hf_cache",
     log_cache=f"{CACHE_ROOT}/logs",
     max_input_qsize=4,  # last in queue can get response before request timeout
@@ -62,14 +65,15 @@ inference_config = InferenceConfig(
     backend_debug_mode=BACKEND_DEBUG_MODE,
     frontend_debug_mode=FRONTEND_DEBUG_MODE,
     mock_model=MOCK_MODEL,
-    # falcon_config=FalconConfig(
-    #     use2layer=FALCON_40B_2LAYER,
-    #     pytorch_no_weights=FALCON_40B_PYTORCH_NO_WEIGHTS,
-    #     save=FALCON_40B_SAVE,
-    #     load=FALCON_40B_LOAD,
-    #     log_level_debug=FALCON_40B_LOG_LEVEL_DEBUG,
-    #     tti_suffix=FALCON_40B_TTI_SUFFIX,
-    # ),
+    falcon_config=FalconConfig(
+        model_version="tiiuae/falcon-7b-instruct",
+        batch_size=32,
+        num_layers=32,
+        max_seq_len=1024,
+        default_top_p=0.9,
+        default_top_k=40,
+        default_temperature=1.0,
+    ),
 )
 
 print("using inference_config:\n")

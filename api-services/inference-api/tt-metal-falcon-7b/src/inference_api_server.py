@@ -63,15 +63,6 @@ time_last_response_lock = Lock()
 api_log_dir = os.path.join(inference_config.log_cache, "api_logs")
 
 
-def get_backend_override_args():
-    # terminate env vars and pass to switching logic with simple logging
-    override_args = {
-        "cache_root": os.getenv("CACHE_ROOT"),
-    }
-    logger.info(override_args)
-    return override_args
-
-
 def initialize_decode_backend(override_args):
     global input_queue
     global output_queue
@@ -88,7 +79,6 @@ def initialize_decode_backend(override_args):
             input_queue,
             output_queue,
             status_queue,
-            override_args,
             inference_config.backend_debug_mode,
         ),
     )
