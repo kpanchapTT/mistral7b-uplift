@@ -192,6 +192,12 @@ class PrefillDecodeBackend:
     def get_users(self):
         return [u for u in self.users if u]
 
+    def get_user_param(self, param):
+        return [
+            user.generation_params[param] if user is not None else None
+            for user in self.users
+        ]
+
     def timer_start(self, name):
         self.timestamps_start[name] = time.time()
 
@@ -383,7 +389,7 @@ class PrefillDecodeBackend:
 
     def prefill(self):
         logger.info("Running prefill ...")
-        self.prefill_output_ids = torch.zeros(self.num_users, 1, dtype=torch.int64)
+        self.prefill_output_ids = torch.zeros(self.batch_size, 1, dtype=torch.int64)
         for user_idx, user_info in enumerate(self.get_users()):
             if user_info.prefill_complete:
                 logger.info(f"user_id={user_idx}: skipping prefill")
@@ -423,14 +429,12 @@ class PrefillDecodeBackend:
             tt_logits.deallocate()
 
             # TODO: can we actually use the first token generated via prefill?
-            user_output_ids = self.post_processor(
+            self.prefill_output_ids[user_idx] = self.post_processor(
                 logits=logits, index=self.num_input_tokens - 1
-            )
+            )[0]
             user_info.prefill_complete = True
 
-        self.decode_ids = torch.zeros(self.batch_size, 1, dtype=torch.int64)
-        for user_idx, output_id in enumerate(self.prefill_output_ids):
-            self.decode_ids[user_idx] = output_id
+        self.decode_ids = self.prefill_output_ids.clone()
 
         self.kv_cache_len = (
             self.num_input_tokens
@@ -467,33 +471,19 @@ class PrefillDecodeBackend:
         if tt_decode_attention_mask is not None:
             tt_decode_attention_mask.deallocate()
         self.timer_stop("decode")
-        self.timer_start("token_selection")
+        self.timer_start("decode_get_logits")
         logits = tt2torch_tensor(tt_logits).squeeze(1)
         tt_logits.deallocate()
-
-        # TODO: add top p top k
-        # self.decode_ids = self.post_processor(logits=logits, index=...).reshape(
-        #     self.batch_size, 1
-        # )
-        top_ps = [
-            user.generation_params["top_p"] if user is not None else self.default_top_p
-            for user in self.users
-        ]
-        top_ks = [
-            user.generation_params["top_k"] if user is not None else self.default_top_k
-            for user in self.users
-        ]
-        temperatures = [
-            (
-                user.generation_params["temperature"]
-                if user is not None
-                else self.default_temperature
-            )
-            for user in self.users
-        ]
+        self.timer_stop("decode_get_logits")
+        self.timer_start("token_selection")
+        self.timer_start("batch_top_pk_logits_efficient")
         self.decode_ids = batch_top_pk_logits_efficient(
-            logits, top_ps, top_ks, temperatures
+            logits,
+            top_ps=self.get_user_param("top_p"),
+            top_ks=self.get_user_param("top_k"),
+            temperatures=self.get_user_param("temperature"),
         ).reshape(self.batch_size, 1)
+        self.timer_stop("batch_top_pk_logits_efficient")
 
         for idx, user_decode_id in enumerate(self.decode_ids):
             if self.users[idx] is None:
@@ -601,28 +591,31 @@ class PrefillDecodeBackend:
 
 
 def batch_top_pk_logits_efficient(
-    logits, top_ps=[0.9], top_ks=[10], temperatures=[1.0], return_probs=False
+    logits,
+    top_ps=[0.9],
+    top_ks=[10],
+    temperatures=[1.0],
+    return_probs=False,
+    skip_token=11,
 ):
     out_tokens = []
     for b_logits, p, k, temperature in zip(logits[0], top_ps, top_ks, temperatures):
-        # do not keep the entire vocab size after top k. Instead, keep the k size tensor and record the associated indices
-        top_k_values, top_k_indices = torch.topk(b_logits.unsqueeze(0), k=k)
-        norm_val = sum(top_k_values)
-        if not torch.eq(norm_val, 0).all():
-            top_k_values = top_k_values / sum(top_k_values)
-        top_p_values = top_k_top_p_filtering(top_k_values, top_p=p)
-        probs = F.softmax(top_p_values / temperature, dim=-1)
-        try:
-            top_k_id = torch.multinomial(probs, num_samples=1).squeeze(-1)
-        except Exception as e:
-            breakpoint()
-        token = top_k_indices.gather(-1, top_k_id.unsqueeze(-1)).squeeze(-1)
-        if return_probs:
-            # TODO: effectively batch probs
-            raise NotImplementedError
-            # return token, (probs, top_k_indices)
+        if p is None:
+            # skip None users
+            token = torch.tensor([skip_token])
         else:
-            out_tokens.append(token)
+            # do not keep the entire vocab size after top k. Instead, keep the k size tensor and record the associated indices
+            top_k_values, top_k_indices = torch.topk(b_logits.unsqueeze(0), k=k)
+            # replace any nans with 0's
+            top_k_values = torch.where(
+                torch.isnan(top_k_values), torch.zeros_like(top_k_values), top_k_values
+            )
+            top_p_values = top_k_top_p_filtering(top_k_values, top_p=p)
+            probs = F.softmax(top_p_values / temperature, dim=-1)
+            top_k_id = torch.multinomial(probs, num_samples=1).squeeze(-1)
+            token = top_k_indices.gather(-1, top_k_id.unsqueeze(-1)).squeeze(-1)
+
+        out_tokens.append(token)
     return torch.concat(out_tokens)
 
 
