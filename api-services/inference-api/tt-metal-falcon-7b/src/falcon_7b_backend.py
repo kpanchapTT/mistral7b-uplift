@@ -196,13 +196,12 @@ class PrefillDecodeBackend:
         self.timestamps_start[name] = time.time()
 
     def timer_stop(self, name, log=True):
-        if name not in self.timestamps_stop.keys():
-            return
-        self.timestamps_stop[name] = time.time()
-        timedelta = self.timestamps_stop[name] - self.timestamps_start[name]
-        if log:
-            print(f"timedelta: {name}: {timedelta} seconds")
-            logger.info(f"timedelta: {name}: {timedelta} seconds")
+        if name in self.timestamps_stop.keys():
+            self.timestamps_stop[name] = time.time()
+            timedelta = self.timestamps_stop[name] - self.timestamps_start[name]
+            if log:
+                print(f"timedelta: {name}: {timedelta} seconds")
+                logger.info(f"timedelta: {name}: {timedelta} seconds")
 
     def model_location_generator(self, model_version, model_subdir=""):
         model_cache_path = Path(self.cache_root) / "tt-metal-models" / model_version
