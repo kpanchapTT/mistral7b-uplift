@@ -195,7 +195,7 @@ class PrefillDecodeBackend:
     def timer_start(self, name):
         self.timestamps_start[name] = time.time()
 
-    def timer_stop(self, name, log=True)
+    def timer_stop(self, name, log=True):
         if name not in self.timestamps_stop.keys():
             return
         self.timestamps_stop[name] = time.time()
@@ -489,9 +489,9 @@ class PrefillDecodeBackend:
             )
             for user in self.users
         ]
-        self.decode_ids = batch_top_pk_logits_efficient(logits, top_ps, top_ks, temperatures).reshape(
-            self.batch_size, 1
-        )
+        self.decode_ids = batch_top_pk_logits_efficient(
+            logits, top_ps, top_ks, temperatures
+        ).reshape(self.batch_size, 1)
 
         for idx, user_decode_id in enumerate(self.decode_ids):
             if self.users[idx] is None:
