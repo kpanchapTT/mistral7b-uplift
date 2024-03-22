@@ -63,7 +63,7 @@ time_last_response_lock = Lock()
 api_log_dir = os.path.join(inference_config.log_cache, "api_logs")
 
 
-def initialize_decode_backend(override_args):
+def initialize_decode_backend():
     global input_queue
     global output_queue
     global status_queue
@@ -473,8 +473,7 @@ def global_backend_init():
         # Create server log directory
         if not os.path.exists(api_log_dir):
             os.makedirs(api_log_dir)
-        override_args = get_backend_override_args()
-        initialize_decode_backend(override_args)
+        initialize_decode_backend()
         backend_initialized = True
 
 
