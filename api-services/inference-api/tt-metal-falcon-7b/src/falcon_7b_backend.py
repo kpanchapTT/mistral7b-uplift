@@ -223,12 +223,14 @@ class PrefillDecodeBackend:
         logger.info("teardown_tt_metal_device ...")
         ttl.device.CloseDevice(self.device)
         ttl.device.DeallocateBuffers(self.device)
+        ttl.program_cache.disable_and_clear()
 
     def init_tt_metal_device(self):
         logger.info("init_tt_metal_device ...")
         # TODO: can this be determined?
         # if not, use environment var
-        device_id = os.getenv("DEVICE_ID", 0)
+        device_id = int(os.getenv("DEVICE_ID", 0))
+        logger.info(f"using DEVICE_ID={device_id}")
         device = ttl.device.CreateDevice(device_id)
         ttl.device.SetDefaultDevice(device)
         self.device = ttl.device.GetDefaultDevice()
@@ -236,6 +238,7 @@ class PrefillDecodeBackend:
     def init_tt_metal(self):
         logger.info("init_tt_metal ...")
         self.init_tt_metal_device()
+        ttl.program_cache.disable_and_clear()
         ttl.program_cache.enable()
         disable_persistent_kernel_cache()
         disable_compilation_reports()
@@ -605,6 +608,9 @@ def batch_top_pk_logits_efficient(
     for b_logits, p, k, temperature in zip(logits[0], top_ps, top_ks, temperatures):
         # do not keep the entire vocab size after top k. Instead, keep the k size tensor and record the associated indices
         top_k_values, top_k_indices = torch.topk(b_logits.unsqueeze(0), k=k)
+        norm_val = sum(top_k_values)
+        if not torch.eq(norm_val, 0).all():
+            top_k_values = top_k_values / sum(top_k_values)
         top_p_values = top_k_top_p_filtering(top_k_values, top_p=p)
         probs = F.softmax(top_p_values / temperature, dim=-1)
         try:
