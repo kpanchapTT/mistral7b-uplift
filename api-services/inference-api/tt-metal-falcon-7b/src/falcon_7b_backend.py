@@ -178,6 +178,9 @@ class PrefillDecodeBackend:
         self.default_top_k = inference_config.falcon_config.default_top_k
         self.default_temperature = inference_config.falcon_config.default_temperature
         #
+        self.timestamps_start = {}
+        self.timestamps_stop = {}
+        #
         self.device = None
         self.cache_root = Path(cache_root)
         if not self.cache_root.exists():
@@ -188,6 +191,18 @@ class PrefillDecodeBackend:
 
     def get_users(self):
         return [u for u in self.users if u]
+
+    def timer_start(self, name):
+        self.timestamps_start[name] = time.time()
+
+    def timer_stop(self, name, log=True)
+        if name not in self.timestamps_stop.keys():
+            return
+        self.timestamps_stop[name] = time.time()
+        timedelta = self.timestamps_stop[name] - self.timestamps_start[name]
+        if log:
+            print(f"timedelta: {name}: {timedelta} seconds")
+            logger.info(f"timedelta: {name}: {timedelta} seconds")
 
     def model_location_generator(self, model_version, model_subdir=""):
         model_cache_path = Path(self.cache_root) / "tt-metal-models" / model_version
@@ -374,6 +389,7 @@ class PrefillDecodeBackend:
             # TODO: prefill batches of prompts of various lengths arent fully supported
             # currently max length of batch is used, padding tokens will be added
             # could this be supported by prefilling one prompt at a time?
+            self.timer_start("prefill_preprocessing")
             (
                 tt_prefill_embeddings,
                 tt_prefill_attention_mask,
@@ -383,7 +399,9 @@ class PrefillDecodeBackend:
                 0,
                 num_input_tokens=self.num_input_tokens,
             )
+            self.timer_stop("prefill_preprocessing")
             assert tt_prefill_attention_mask is not None
+            self.timer_start("prefill")
             tt_logits, self.kv_cache = self.tt_FalconCausalLM(
                 input_embeddings=tt_prefill_embeddings,
                 llm_mode="prefill",
@@ -397,6 +415,7 @@ class PrefillDecodeBackend:
             tt_prefill_embeddings.deallocate()
             if tt_prefill_attention_mask is not None:
                 tt_prefill_attention_mask.deallocate()
+            self.timer_stop("prefill")
 
             logits = tt2torch_tensor(tt_logits).squeeze(1)
             tt_logits.deallocate()
@@ -419,6 +438,8 @@ class PrefillDecodeBackend:
         logger.info("Done prefill")
 
     def decode(self):
+        self.timer_stop("all_but_decode")
+        self.timer_start("decode_preprocessing")
         (
             tt_decode_embeddings,
             tt_decode_attention_mask,
@@ -428,8 +449,9 @@ class PrefillDecodeBackend:
             self.kv_cache_len,
             num_input_tokens=self.kv_cache_len + 1,
         )
+        self.timer_stop("decode_preprocessing")
         assert tt_decode_attention_mask is not None
-
+        self.timer_start("decode")
         tt_logits, self.kv_cache = self.tt_FalconCausalLM(
             input_embeddings=tt_decode_embeddings,
             llm_mode="decode",
@@ -442,7 +464,8 @@ class PrefillDecodeBackend:
         tt_decode_embeddings.deallocate()
         if tt_decode_attention_mask is not None:
             tt_decode_attention_mask.deallocate()
-
+        self.timer_stop("decode")
+        self.timer_start("token_selection")
         logits = tt2torch_tensor(tt_logits).squeeze(1)
         tt_logits.deallocate()
 
@@ -485,8 +508,9 @@ class PrefillDecodeBackend:
 
             if self.users[idx].decode_complete:
                 self.decode_ids[idx] = self.tokenizer.eos_token_id
-
+        self.timer_stop("token_selection")
         self.kv_cache_len += 1
+        self.timer_start("all_but_decode")
 
     def push_outputs(self, output_q):
         for i, token_id in enumerate(self.decode_ids):  # bc input_ids is 1x32
@@ -583,7 +607,10 @@ def batch_top_pk_logits_efficient(
         top_k_values, top_k_indices = torch.topk(b_logits.unsqueeze(0), k=k)
         top_p_values = top_k_top_p_filtering(top_k_values, top_p=p)
         probs = F.softmax(top_p_values / temperature, dim=-1)
-        top_k_id = torch.multinomial(probs, num_samples=1).squeeze(-1)
+        try:
+            top_k_id = torch.multinomial(probs, num_samples=1).squeeze(-1)
+        except Exception as e:
+            breakpoint()
         token = top_k_indices.gather(-1, top_k_id.unsqueeze(-1)).squeeze(-1)
         if return_probs:
             # TODO: effectively batch probs
