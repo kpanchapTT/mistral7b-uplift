@@ -196,7 +196,7 @@ class PrefillDecodeBackend:
         self.timestamps_start[name] = time.time()
 
     def timer_stop(self, name, log=True):
-        if name in self.timestamps_stop.keys():
+        if name in self.timestamps_start.keys():
             self.timestamps_stop[name] = time.time()
             timedelta = self.timestamps_stop[name] - self.timestamps_start[name]
             if log:
