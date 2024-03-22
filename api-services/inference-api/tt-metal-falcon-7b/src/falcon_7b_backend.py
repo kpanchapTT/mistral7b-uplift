@@ -583,8 +583,6 @@ def batch_top_pk_logits_efficient(
         top_k_values, top_k_indices = torch.topk(b_logits.unsqueeze(0), k=k)
         top_p_values = top_k_top_p_filtering(top_k_values, top_p=p)
         probs = F.softmax(top_p_values / temperature, dim=-1)
-        # if torch.isinf(probs).any() or torch.isnan(probs).any():
-        #     breakpoint()
         top_k_id = torch.multinomial(probs, num_samples=1).squeeze(-1)
         token = top_k_indices.gather(-1, top_k_id.unsqueeze(-1)).squeeze(-1)
         if return_probs:
@@ -596,16 +594,15 @@ def batch_top_pk_logits_efficient(
     return torch.concat(out_tokens)
 
 
-def run_backend(prompt_q, output_q, status_q, arg_overrides, verbose=True):
+def run_backend(prompt_q, output_q, status_q, verbose=True):
     logger.info("starting run_backend ...")
     with torch.no_grad():
-        # TODO: wire out these kwargs to arg_overrides, rename
         backend = PrefillDecodeBackend(
             model_version=inference_config.falcon_config.model_version,
             batch_size=inference_config.falcon_config.batch_size,
             num_layers=inference_config.falcon_config.num_layers,
             max_seq_len=inference_config.falcon_config.max_seq_len,
-            cache_root=arg_overrides["cache_root"],
+            cache_root=inference_config.cache_root,
             verbose=verbose,
         )
         try:
