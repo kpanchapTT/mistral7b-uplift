@@ -180,6 +180,7 @@ class PrefillDecodeBackend:
         #
         self.timestamps_start = {}
         self.timestamps_stop = {}
+        self.enable_profile_logging = False
         #
         self.device = None
         self.cache_root = Path(cache_root)
@@ -201,11 +202,11 @@ class PrefillDecodeBackend:
     def timer_start(self, name):
         self.timestamps_start[name] = time.time()
 
-    def timer_stop(self, name, log=True):
+    def timer_stop(self, name, log=False):
         if name in self.timestamps_start.keys():
             self.timestamps_stop[name] = time.time()
             timedelta = self.timestamps_stop[name] - self.timestamps_start[name]
-            if log:
+            if log or self.enable_profile_logging:
                 print(f"timedelta: {name}: {timedelta} seconds")
                 logger.info(f"timedelta: {name}: {timedelta} seconds")
 
