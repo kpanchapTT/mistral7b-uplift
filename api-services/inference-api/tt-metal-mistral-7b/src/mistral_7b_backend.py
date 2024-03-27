@@ -427,18 +427,17 @@ class PrefillDecodeBackend:
         # tt_out_tok = ttnn.clone(tt_out_argmax, ttnn.DRAM_MEMORY_CONFIG, dtype=ttnn.uint32)
         # tt_out_tok = ttnn.experimental.tensor.typecast(tt_out_tok, dtype=ttnn.uint32)
         breakpoint()
-        tt_out_tok = self.select_tokens(logits=tt_output_torch).reshape([self.batch_size, 1])
+        self.decode_ids = self.select_tokens(logits=tt_output_torch).reshape([self.batch_size, 1])
         self.timer_stop("token_selection")
         self.timer_start("embeddings_on_device")
         # TODO send tensor to host can be remove when argmax on device is working
-        breakpoint()
         tt_out_tok = ttnn.from_torch(
             tt_out_tok,
             device=self.device,
             dtype=ttnn.uint32,
             layout=ttnn.ROW_MAJOR_LAYOUT,
         )
-        self.tt_decode_input = self.tt_embd(tt_out_tok)
+        self.tt_decode_input = self.tt_embd(self.decode_ids)
         self.timer_stop("embeddings_on_device")
         self.iteration += 1
         self.timer_start("all_but_decode")
@@ -462,7 +461,7 @@ class PrefillDecodeBackend:
                 token = self.tokenizer.eos_token_id
             else:
                 token = top_pk_logits_efficient(
-                    logits,
+                    logits[idx],
                     user.generation_params.get("top_p"),
                     user.generation_params.get("top_k"),
                     user.generation_params.get("temperature"),
@@ -578,7 +577,7 @@ def top_pk_logits_efficient(
     skip_token=11,
 ):
     # do not keep the entire vocab size after top k. Instead, keep the k size tensor and record the associated indices
-    top_k_values, top_k_indices = torch.topk(b_logits, k=k)
+    top_k_values, top_k_indices = torch.topk(logits, k=k)
     # replace any nans with 0's
     top_k_values = torch.where(
         torch.isnan(top_k_values), torch.zeros_like(top_k_values), top_k_values
