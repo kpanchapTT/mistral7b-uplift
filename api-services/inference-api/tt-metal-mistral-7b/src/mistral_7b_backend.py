@@ -256,8 +256,6 @@ class PrefillDecodeBackend:
         )
 
         self.generation_start_pos = 0
-        # max_generated_tokens = 120
-        # users_decoding = True
         # needs full batchsize inputs always
         compile_prompts = ["COMPILE_PROMPT"] * self.batch_size
 
@@ -272,8 +270,6 @@ class PrefillDecodeBackend:
             self.device,
         )
         
-        # self.prepare_inputs()
-
         if self.instruct_mode:
             self.tokenizer._model.pad_id = self.tokenizer._model.eos_id
 
@@ -393,8 +389,9 @@ class PrefillDecodeBackend:
 
     def prefill(self):
         # prefill via decode
-        for user in self.get_users():
-            user.prefill_complete = True
+        # for user in self.get_users():
+        #     user.prefill_complete = True
+        pass
 
     def decode(self):
         self.curr_pos = self.generation_start_pos + self.iteration
@@ -426,8 +423,10 @@ class PrefillDecodeBackend:
         # Typecast from bf16 to uint32 for embedding
         # tt_out_tok = ttnn.clone(tt_out_argmax, ttnn.DRAM_MEMORY_CONFIG, dtype=ttnn.uint32)
         # tt_out_tok = ttnn.experimental.tensor.typecast(tt_out_tok, dtype=ttnn.uint32)
-        breakpoint()
-        self.decode_ids = self.select_tokens(logits=tt_output_torch).reshape([self.batch_size, 1])
+        self.decode_ids = self.select_tokens(
+            logits=tt_output_torch,
+            skip_token=self.tokenizer.eos_id,
+        ).reshape([self.batch_size, 1])
         self.timer_stop("token_selection")
         self.timer_start("embeddings_on_device")
         # TODO send tensor to host can be remove when argmax on device is working
@@ -445,6 +444,7 @@ class PrefillDecodeBackend:
     def select_tokens(
         self,
         logits,
+        skip_token,
         return_probs=False,
     ):
         out_tokens = []
@@ -453,12 +453,12 @@ class PrefillDecodeBackend:
                 # skip None users, fill with skip token
                 token = torch.tensor([skip_token])
             elif not user.prefill_complete:
-                token = self.pt_encoded_input[idx, self.iteration].unsqueeze(1)
+                token = self.pt_encoded_input[idx, self.iteration].unsqueeze(0)
                 # TODO: better way of counting prefill that handles input mask being non-contiguous
                 if self.iteration == (torch.count_nonzero(self.input_mask[idx]).item() - 1):
                     user.prefill_complete = True
             elif user.decode_complete:
-                token = self.tokenizer.eos_token_id
+                token = self.tokenizer.eos_id
             else:
                 token = top_pk_logits_efficient(
                     logits[idx],
@@ -466,10 +466,10 @@ class PrefillDecodeBackend:
                     user.generation_params.get("top_k"),
                     user.generation_params.get("temperature"),
                     return_probs=return_probs,
-                    skip_token=self.tokenizer.eos_id,
+                    skip_token=skip_token,
                 )
                 user.num_tokens_generated += 1
-                if token == self.tokenizer.eos_token_id:
+                if token == self.tokenizer.eos_id:
                     user.decode_complete = True
                 elif user.num_tokens_generated > user.max_tokens:
                     user.decode_complete = True
@@ -555,8 +555,8 @@ class PrefillDecodeBackend:
                 logger.debug(f"run_generate step: {self.num_steps}")
             self.pick_prompts(prompt_q)  # we update to self.users
             self.prepare_inputs()
-            if any([not user.prefill_complete for user in self.get_users()]):
-                self.prefill()
+            # if any([not user.prefill_complete for user in self.get_users()]):
+            #     self.prefill()
             logger.info("Running inference decode and pushing results ...")
             while not all([user.decode_complete for user in self.get_users()]):
                 self.decode()
