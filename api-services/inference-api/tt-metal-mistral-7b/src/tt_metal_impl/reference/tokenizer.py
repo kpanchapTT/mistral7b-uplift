@@ -28,7 +28,7 @@ from typing import List
 import torch
 from torch import nn
 
-from model import Transformer
+from .model import Transformer
 
 
 class Tokenizer:

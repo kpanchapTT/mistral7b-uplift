@@ -87,47 +87,6 @@ def preprocess_inputs(
     return emb_inputs, pt_tokenized_inputs, input_mask, rot_emb_matrix_list
 
 
-class UserInfo:
-    def __init__(self, user_id, prompt, position_id, params, tokenizer):
-        self.user_id = user_id
-        self.prompt = prompt
-        self.position_id = position_id
-        # TODO: only tokenize once, consolidate with preprocess_and_validate_inputs()
-        tokenized = tokenizer(
-            prompt,
-            padding="max_length",
-            return_tensors="pt",
-            max_length=2048,
-            truncation=True,
-        )
-        # remove any EOS tokens for input
-        tokenized.input_ids = tokenized.input_ids[
-            tokenized.input_ids != tokenizer.eos_token_id
-        ]
-        # pad back to 2048 tokens
-        tokenized.input_ids = F.pad(
-            tokenized.input_ids,
-            (0, 2048 - tokenized.input_ids.size(0)),
-            "constant",
-            0,
-        )
-
-        self.prompt_tokens = tokenized.input_ids.clone().squeeze()  # (2048,)
-        self.prompt_length = torch.sum(tokenized.attention_mask).item()  # int
-        self.num_tokens_generated = 0
-        self.stop_sequence = None
-        self.generation_params = params
-        self.max_tokens = params["max_tokens"]
-        self.return_prompt = params["return_prompt"]
-        self.cancel = False
-        self.prefill_complete = False
-        self.decode_complete = False
-        self.sent_stop = False
-
-        if params.get("stop_sequence"):
-            self.stop_sequence = tokenizer(params.get("stop_sequence")).input_ids[0]
-
-
 class Emb(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -135,6 +94,24 @@ class Emb(torch.nn.Module):
 
     def forward(self, x):
         return self.emb(x)
+
+
+class UserInfo:
+    def __init__(self, user_id, prompt, position_id, params, tokenizer):
+        self.user_id = user_id
+        self.prompt = prompt
+        self.position_id = position_id
+        self.num_tokens_generated = 0
+        self.generation_params = params
+        self.max_tokens = params["max_tokens"]
+        self.return_prompt = params["return_prompt"]
+        self.cancel = False
+        self.prefill_complete = False
+        self.decode_complete = False
+        self.sent_stop = False
+        self.stop_sequence = None
+        if params.get("stop_sequence"):
+            self.stop_sequence = tokenizer.encode(params.get("stop_sequence"))
 
 
 class PrefillDecodeBackend:
@@ -252,8 +229,8 @@ class PrefillDecodeBackend:
 
     def init_tt_metal(self):
         self.init_tt_metal_device()
-        logger.info("init_tt_metal model ...")
 
+        logger.info("init_tt_metal model ...")
         model_base_path = Path(self.cache_root) / "mistral-7b-instruct"
         self.model_args = TtModelArgs(
             self.device, model_base_path=model_base_path, instruct=self.instruct_mode
@@ -261,8 +238,6 @@ class PrefillDecodeBackend:
         self.tokenizer = Tokenizer(self.model_args.tokenizer_path)
 
         logger.info("Loading weights...")
-        state_dict = self.model_args.get_state_dict()
-
         state_dict = torch.load(self.model_args.consolidated_weights_path)
         state_dict = {
             k: v
@@ -277,25 +252,27 @@ class PrefillDecodeBackend:
         # TODO Should we keep initial embedding on host?
         self.embd = Emb()
         self.embd.load_state_dict(
-            {"emb.weight": state_dict["model.embed_tokens.weight"]}
+            {"emb.weight": state_dict["tok_embeddings.weight"]}
         )
 
-        generation_start_pos = 0
-        max_generated_tokens = 120
-        users_decoding = True
+        self.generation_start_pos = 0
+        # max_generated_tokens = 120
+        # users_decoding = True
+        # needs full batchsize inputs always
+        compile_prompts = ["COMPILE_PROMPT"] * self.batch_size
 
         # Preprocess initial prompt inputs
-        tt_decode_input, pt_encoded_input, input_mask, rot_emb_matrix_list = (
-            preprocess_inputs(
-                self.input_prompts,
-                self.tokenizer,
-                self.model_args,
-                self.dtype,
-                self.embd,
-                self.instruct_mode,
-                self.device,
-            )
+        tt_decode_input, pt_encoded_input, input_mask, compile_rot_emb_matrix_list = preprocess_inputs(
+            compile_prompts,
+            self.tokenizer,
+            self.model_args,
+            self.dtype,
+            self.embd,
+            self.instruct_mode,
+            self.device,
         )
+        
+        # self.prepare_inputs()
 
         if self.instruct_mode:
             self.tokenizer._model.pad_id = self.tokenizer._model.eos_id
@@ -311,8 +288,8 @@ class PrefillDecodeBackend:
                 self.dtype, instruct=self.instruct_mode
             ),
             layers=list(range(self.model_args.n_layers)),
-            rot_mat=rot_emb_matrix_list,
-            start_pos=generation_start_pos,
+            rot_mat=compile_rot_emb_matrix_list,
+            start_pos=self.generation_start_pos,
         )
         # Load TTNN embedding module
         self.tt_embd = TtMistralEmbedding(
@@ -395,7 +372,9 @@ class PrefillDecodeBackend:
             logger.warning(f"WARNING: Duplicate user ids: {user_ids}")
 
     def prepare_inputs(self):
-        input_prompts = [user_info.prompt for user_info in self.users if user_info]
+        # input_prompts = [user_info.prompt for user_info in self.users if user_info]
+        # note: current implementation assumes full 32 prompts input always
+        input_prompts = [user_info.prompt if user_info is not None else '' for user_info in self.users]
         (
             self.tt_decode_input,
             self.pt_encoded_input,
@@ -410,13 +389,15 @@ class PrefillDecodeBackend:
             self.instruct_mode,
             self.device,
         )
+        self.iteration = 0
 
     def prefill(self):
         # prefill via decode
-        pass
+        for user in self.get_users():
+            user.prefill_complete = True
 
     def decode(self):
-        self.curr_pos += self.generation_start_pos + self.iteration
+        self.curr_pos = self.generation_start_pos + self.iteration
         self.timer_stop("all_but_decode")
         self.timer_start("decode_preprocessing")
         decode_input, current_pos = prepare_inputs_ttnn(
@@ -437,17 +418,6 @@ class PrefillDecodeBackend:
         )  # [batch, seq, hidden_dim]
         self.timer_stop("decode_get_logits")
         self.timer_start("token_selection")
-        # If temperature is 0, does greedy decoding (top-1)
-        # tt_out_tok = sample(tt_output_torch, temperature=0, top_p=0.8)
-        self.timer_start("batch_top_pk_logits_efficient")
-        self.decode_ids = batch_top_pk_logits_efficient(
-            tt_output_torch,
-            top_ps=self.get_user_param("top_p"),
-            top_ks=self.get_user_param("top_k"),
-            temperatures=self.get_user_param("temperature"),
-        ).reshape(self.batch_size, 1)
-        self.timer_stop("batch_top_pk_logits_efficient")
-
         # TODO argmax on device
         # tt_out = ttnn.to_layout(tt_out, ttnn.ROW_MAJOR_LAYOUT)
         # tt_out = ttnn.permute(tt_out, (2, 1, 0, 3))
@@ -456,34 +426,12 @@ class PrefillDecodeBackend:
         # Typecast from bf16 to uint32 for embedding
         # tt_out_tok = ttnn.clone(tt_out_argmax, ttnn.DRAM_MEMORY_CONFIG, dtype=ttnn.uint32)
         # tt_out_tok = ttnn.experimental.tensor.typecast(tt_out_tok, dtype=ttnn.uint32)
-
-        if self.iteration < self.input_mask.shape[1]:  # If prefill
-            # If token is pad token, start generating new token, otherwise, push the next prompt token to the model
-            tt_out_tok = torch.where(
-                self.input_mask[:, self.iteration],
-                self.pt_encoded_input[:, self.iteration],
-                tt_out_tok[:, 0],
-            ).unsqueeze(1)
-
-        for idx, user_decode_id in enumerate(self.decode_ids):
-            if self.users[idx] is None:
-                continue
-            self.users[idx].num_tokens_generated += 1
-            if user_decode_id == self.tokenizer.eos_token_id:
-                self.users[idx].decode_complete = True
-            elif self.users[idx].num_tokens_generated > self.users[idx].max_tokens:
-                self.users[idx].decode_complete = True
-            elif (self.users[idx].stop_sequence is not None) and (
-                user_decode_id == self.users[idx].stop_sequence
-            ):
-                self.users[idx].decode_complete = True
-
-            if self.users[idx].decode_complete:
-                self.decode_ids[idx] = self.tokenizer.eos_token_id
+        breakpoint()
+        tt_out_tok = self.select_tokens(logits=tt_output_torch).reshape([self.batch_size, 1])
         self.timer_stop("token_selection")
         self.timer_start("embeddings_on_device")
-        # Embedding on device
         # TODO send tensor to host can be remove when argmax on device is working
+        breakpoint()
         tt_out_tok = ttnn.from_torch(
             tt_out_tok,
             device=self.device,
@@ -494,6 +442,44 @@ class PrefillDecodeBackend:
         self.timer_stop("embeddings_on_device")
         self.iteration += 1
         self.timer_start("all_but_decode")
+    
+    def select_tokens(
+        self,
+        logits,
+        return_probs=False,
+    ):
+        out_tokens = []
+        for idx, user in enumerate(self.users):
+            if not user:
+                # skip None users, fill with skip token
+                token = torch.tensor([skip_token])
+            elif not user.prefill_complete:
+                token = self.pt_encoded_input[idx, self.iteration].unsqueeze(1)
+                # TODO: better way of counting prefill that handles input mask being non-contiguous
+                if self.iteration == (torch.count_nonzero(self.input_mask[idx]).item() - 1):
+                    user.prefill_complete = True
+            elif user.decode_complete:
+                token = self.tokenizer.eos_token_id
+            else:
+                token = top_pk_logits_efficient(
+                    logits,
+                    user.generation_params.get("top_p"),
+                    user.generation_params.get("top_k"),
+                    user.generation_params.get("temperature"),
+                    return_probs=return_probs,
+                    skip_token=self.tokenizer.eos_id,
+                )
+                user.num_tokens_generated += 1
+                if token == self.tokenizer.eos_token_id:
+                    user.decode_complete = True
+                elif user.num_tokens_generated > user.max_tokens:
+                    user.decode_complete = True
+                elif (user.stop_sequence is not None) and (
+                    token == user.stop_sequence
+                ):
+                    user.decode_complete = True
+            out_tokens.append(token)
+        return torch.concat(out_tokens)
 
     def push_outputs(self, output_q):
         for i, token_id in enumerate(self.decode_ids):  # bc input_ids is 1x32
@@ -581,33 +567,54 @@ class PrefillDecodeBackend:
             self.num_steps += 1
 
 
-def batch_top_pk_logits_efficient(
+
+
+def top_pk_logits_efficient(
     logits,
-    top_ps=[0.9],
-    top_ks=[10],
-    temperatures=[1.0],
+    p,
+    k,
+    temperature,
     return_probs=False,
     skip_token=11,
 ):
-    out_tokens = []
-    for b_logits, p, k, temperature in zip(logits[0], top_ps, top_ks, temperatures):
-        if p is None:
-            # skip None users
-            token = torch.tensor([skip_token])
-        else:
-            # do not keep the entire vocab size after top k. Instead, keep the k size tensor and record the associated indices
-            top_k_values, top_k_indices = torch.topk(b_logits.unsqueeze(0), k=k)
-            # replace any nans with 0's
-            top_k_values = torch.where(
-                torch.isnan(top_k_values), torch.zeros_like(top_k_values), top_k_values
-            )
-            top_p_values = top_k_top_p_filtering(top_k_values, top_p=p)
-            probs = F.softmax(top_p_values / temperature, dim=-1)
-            top_k_id = torch.multinomial(probs, num_samples=1).squeeze(-1)
-            token = top_k_indices.gather(-1, top_k_id.unsqueeze(-1)).squeeze(-1)
+    # do not keep the entire vocab size after top k. Instead, keep the k size tensor and record the associated indices
+    top_k_values, top_k_indices = torch.topk(b_logits, k=k)
+    # replace any nans with 0's
+    top_k_values = torch.where(
+        torch.isnan(top_k_values), torch.zeros_like(top_k_values), top_k_values
+    )
+    top_p_values = top_k_top_p_filtering(top_k_values, top_p=p)
+    probs = F.softmax(top_p_values / temperature, dim=-1)
+    top_k_id = torch.multinomial(probs, num_samples=1).squeeze(-1)
+    token = top_k_indices.gather(-1, top_k_id.unsqueeze(-1)).squeeze(-1)
+    return token
 
-        out_tokens.append(token)
-    return torch.concat(out_tokens)
+# def batch_top_pk_logits_efficient(
+#     logits,
+#     top_ps,
+#     top_ks,
+#     temperatures,
+#     return_probs=False,
+#     skip_token=11,
+# ):
+#     out_tokens = []
+#     for b_logits, p, k, temperature in zip(logits, top_ps, top_ks, temperatures):
+#         if p is None:
+#             # skip None users
+#             token = torch.tensor([skip_token])
+#         else:
+#             # do not keep the entire vocab size after top k. Instead, keep the k size tensor and record the associated indices
+#             top_k_values, top_k_indices = torch.topk(b_logits, k=k)
+#             # replace any nans with 0's
+#             top_k_values = torch.where(
+#                 torch.isnan(top_k_values), torch.zeros_like(top_k_values), top_k_values
+#             )
+#             top_p_values = top_k_top_p_filtering(top_k_values, top_p=p)
+#             probs = F.softmax(top_p_values / temperature, dim=-1)
+#             top_k_id = torch.multinomial(probs, num_samples=1).squeeze(-1)
+#             token = top_k_indices.gather(-1, top_k_id.unsqueeze(-1)).squeeze(-1)
+#         out_tokens.append(token)
+#     return torch.concat(out_tokens)
 
 
 def run_backend(prompt_q, output_q, status_q, verbose=True):
