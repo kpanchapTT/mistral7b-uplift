@@ -34,7 +34,7 @@ ModelConfig = namedtuple(
     "ModelConfig",
     [
         "model_version",
-        "model_cache_name"
+        "model_cache_name",
         "batch_size",
         "num_layers",
         "max_seq_len",
