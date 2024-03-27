@@ -184,16 +184,18 @@ def preprocess_prompt(data):
 
 def safe_convert_type(data_dict, key, dest_type, default):
     error = None
-    value = data_dict.get(key, default)
-    converted_value = None
-    try:
-        converted_value = dest_type(value)
-    # pylint: disable=broad-except
-    except Exception as err:
-        logger.error(f"Error: safe_convert excepts: {err}")
-        status_phrase = f"Parameter: {key} is type={type(value)}, expected {dest_type}"
-        status_code = 400
-        error = ({"message": status_phrase}, status_code)
+    converted_value = default
+    if key in data_dict:
+        value = data_dict.get(key, default)
+        try:
+            converted_value = dest_type(value)
+        # pylint: disable=broad-except
+        except Exception as err:
+            logger.error(f"Error: safe_convert excepts: {err}")
+            status_phrase = f"Parameter: {key} is type={type(value)}, expected {dest_type}"
+            status_code = 400
+            error = ({"message": status_phrase}, status_code)
+
     return converted_value, error
 
 
