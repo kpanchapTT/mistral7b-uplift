@@ -192,7 +192,9 @@ def safe_convert_type(data_dict, key, dest_type, default):
         # pylint: disable=broad-except
         except Exception as err:
             logger.error(f"Error: safe_convert excepts: {err}")
-            status_phrase = f"Parameter: {key} is type={type(value)}, expected {dest_type}"
+            status_phrase = (
+                f"Parameter: {key} is type={type(value)}, expected {dest_type}"
+            )
             status_code = 400
             error = ({"message": status_phrase}, status_code)
 

@@ -50,6 +50,10 @@ class Tokenizer:
         return self._model.eos_id()
 
     @property
+    def eos_token_id(self) -> int:
+        return self._model.eos_id()
+
+    @property
     def pad_id(self) -> int:
         return self._model.pad_id()
 
