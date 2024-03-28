@@ -112,6 +112,12 @@ class UserInfo:
         self.stop_sequence = None
         if params.get("stop_sequence"):
             self.stop_sequence = tokenizer.encode(params.get("stop_sequence"))
+        # note: sentecepiece tokenizer decode doesnt handle spaces directly
+        # see: https://github.com/google/sentencepiece/blob/master/python/src/sentencepiece/__init__.py#L776
+        # users must aggregate all generated tokens and decode full text each time
+        # then send new chars
+        self.generated_tokens = []
+        self.num_generated_chars = 0
 
 
 class PrefillDecodeBackend:
@@ -132,8 +138,6 @@ class PrefillDecodeBackend:
         self.num_users = None
         self.users = [None for _ in range(self.max_users)]
         self.use_cache = True
-        # # inputs to model
-        self.decode_ids = None
         # backend status
         self.time_last_status = time.time()
         self.update_period = 1  # status message period in seconds
@@ -143,19 +147,12 @@ class PrefillDecodeBackend:
         self.batch_size = batch_size
         self.num_layers = num_layers
         self.max_seq_len = max_seq_len
-        # self.model_config = get_model_config("BFLOAT16-DRAM")
-        #
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_version)
-        self.tokenizer.pad_token_id = 0
-        # self.post_processor = partial(post_process)
         self.default_top_p = inference_config.model_config.default_top_p
         self.default_top_k = inference_config.model_config.default_top_k
         self.default_temperature = inference_config.model_config.default_temperature
-        #
         self.timestamps_start = {}
         self.timestamps_stop = {}
         self.enable_profile_logging = True
-        #
         self.device = None
         self.cache_root = Path(cache_root)
         if not self.cache_root.exists():
@@ -165,7 +162,6 @@ class PrefillDecodeBackend:
         self.instruct_mode = True
         if not os.environ.get("MOCK_MODEL"):
             self.init_tt_metal()
-        #
         self.iteration = 0
 
     def get_users(self):
@@ -429,7 +425,7 @@ class PrefillDecodeBackend:
         # Typecast from bf16 to uint32 for embedding
         # tt_out_tok = ttnn.clone(tt_out_argmax, ttnn.DRAM_MEMORY_CONFIG, dtype=ttnn.uint32)
         # tt_out_tok = ttnn.experimental.tensor.typecast(tt_out_tok, dtype=ttnn.uint32)
-        self.decode_ids = self.select_tokens(
+        tt_out_tok = self.select_tokens(
             logits=tt_output_torch,
             skip_token=self.tokenizer.eos_id,
         ).reshape([self.batch_size, 1])
@@ -437,7 +433,7 @@ class PrefillDecodeBackend:
         self.timer_start("embeddings_on_device")
         # TODO send tensor to host can be remove when argmax on device is working
         tt_out_tok = ttnn.from_torch(
-            self.decode_ids,
+            tt_out_tok,
             device=self.device,
             dtype=ttnn.uint32,
             layout=ttnn.ROW_MAJOR_LAYOUT,
@@ -460,13 +456,19 @@ class PrefillDecodeBackend:
                 token = torch.tensor([skip_token])
             elif not user.prefill_complete:
                 token = self.pt_encoded_input[idx, self.iteration].unsqueeze(0)
+                if user.return_prompt:
+                    user.generated_tokens.append(token.item())
                 # TODO: better way of counting prefill that handles input mask being non-contiguous
                 if self.iteration == (
                     torch.count_nonzero(self.input_mask[idx]).item() - 1
                 ):
                     user.prefill_complete = True
             elif user.decode_complete:
-                token = self.tokenizer.eos_id
+                token = torch.tensor([self.tokenizer.eos_id])
+                user.generated_tokens.append(token.item())
+                logger.error(
+                    f"user.decode_complete={user.decode_complete}, and is still generating. Should be None"
+                )
             else:
                 token = top_pk_logits_efficient(
                     logits[idx],
@@ -476,6 +478,7 @@ class PrefillDecodeBackend:
                     return_probs=return_probs,
                     skip_token=skip_token,
                 )
+                user.generated_tokens.append(token.item())
                 user.num_tokens_generated += 1
                 if token == self.tokenizer.eos_id:
                     user.decode_complete = True
@@ -487,45 +490,43 @@ class PrefillDecodeBackend:
         return torch.concat(out_tokens)
 
     def push_outputs(self, output_q):
-        for i, token_id in enumerate(self.decode_ids):  # bc input_ids is 1x32
-            if self.users[i] is None:
+        # Sentencepiece tokenizer doesn't handle spaces per token, must decode full text
+        # then push new chars to output queue
+        for idx, user in enumerate(self.users):
+            if user is None or not user.generated_tokens:
                 continue
-            push_token_ids = []
-            push_token_ids.append(token_id.item())
-            return_text = self.tokenizer.decode(push_token_ids)
-            output_q.put((self.users[i].user_id, return_text))
+            full_text = self.tokenizer.decode(user.generated_tokens)
+            out_text = full_text[user.num_generated_chars :]
+            user.num_generated_chars = len(full_text)
+            out = (user.user_id, out_text)
+            output_q.put(out)
             if self.verbose:
-                logger.debug(f"user_id:{self.users[i].user_id}, {return_text}")
+                logger.debug(f"user_id:{user.user_id}, {out_text}")
 
-    def reset_user_memory(self, user_idx, user):
-        self.decode_ids[user_idx, 0] = 0
+    def reset_user_memory(self, idx, user):
+        # not needed for this implementation
+        pass
 
     def update_users(self):
-        for i, token_id in enumerate(self.decode_ids):  # bc input_ids is 1x32
-            if self.users[i] is None:
+        for idx, user in enumerate(self.users):
+            if user is None or not user.generated_tokens:
                 continue
-
-            if token_id == self.tokenizer.eos_id and self.users[i].decode_complete:
-                self.reset_user_memory(i, self.users[i])
-                self.users[i] = None
+            token_id = user.generated_tokens[-1]
+            if (token_id == self.tokenizer.eos_id) or user.decode_complete:
+                if not user.decode_complete:
+                    logger.error(
+                        f"user_id: {user.user_id} from index {idx} had EOS token but decode_complete=False."
+                    )
+                if not (token_id == self.tokenizer.eos_id):
+                    logger.error(
+                        f"user_id: {user.user_id} from index {idx} did not have EOS token but decode_complete=True."
+                    )
                 if self.verbose:
                     logger.debug(
-                        f"Evicted user_id: {self.users[i].user_id} from index {i} in user list"
+                        f"Evicted user_id: {user.user_id} from index {idx} in user list"
                     )
-            elif (
-                token_id == self.tokenizer.eos_id and not self.users[i].decode_complete
-            ):
-                logger.error(
-                    f"user_id: {self.users[i].user_id} from index {i} had EOS token but decode_complete=False."
-                )
-                self.reset_user_memory(i, self.users[i])
-                self.users[i] = None
-            elif token_id != self.tokenizer.eos_id and self.users[i].decode_complete:
-                logger.error(
-                    f"user_id: {self.users[i].user_id} from index {i} did not have EOS token but decode_complete=True."
-                )
-                self.reset_user_memory(i, self.users[i])
-                self.users[i] = None
+                self.reset_user_memory(idx, user)
+                self.users[idx] = None
 
     def send_status(self, prompt_q, status_q):
         if time.time() - self.time_last_status > self.update_period:
