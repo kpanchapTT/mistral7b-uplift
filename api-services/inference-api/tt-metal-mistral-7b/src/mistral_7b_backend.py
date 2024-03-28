@@ -163,6 +163,7 @@ class PrefillDecodeBackend:
         if not os.environ.get("MOCK_MODEL"):
             self.init_tt_metal()
         self.iteration = 0
+        self.rot_emb_matrix_list = []
 
     def get_users(self):
         return [u for u in self.users if u]
@@ -258,7 +259,7 @@ class PrefillDecodeBackend:
             tt_decode_input,
             pt_encoded_input,
             input_mask,
-            compile_rot_emb_matrix_list,
+            self.rot_emb_matrix_list,
         ) = preprocess_inputs(
             compile_prompts,
             self.tokenizer,
@@ -283,9 +284,12 @@ class PrefillDecodeBackend:
                 self.dtype, instruct=self.instruct_mode
             ),
             layers=list(range(self.model_args.n_layers)),
-            rot_mat=compile_rot_emb_matrix_list,
+            rot_mat=self.rot_emb_matrix_list,
             start_pos=self.generation_start_pos,
         )
+        # for mat in compile_rot_emb_matrix_list:
+        #     # mat.deallocate()
+        #     ttnn.deallocate(mat)
         # Load TTNN embedding module
         self.tt_embd = TtMistralEmbedding(
             device=self.device,
@@ -373,6 +377,11 @@ class PrefillDecodeBackend:
             user_info.prompt if user_info is not None else ""
             for user_info in self.users
         ]
+        self.timer_start("preprocess_inputs")
+        # deallocate all ttnn mats
+        # for mat in self.rot_emb_matrix_list:
+        #     # mat.deallocate()
+        #     ttnn.deallocate(mat)
         (
             self.tt_decode_input,
             self.pt_encoded_input,
@@ -387,6 +396,7 @@ class PrefillDecodeBackend:
             self.instruct_mode,
             self.device,
         )
+        self.timer_stop("preprocess_inputs")
         self.iteration = 0
 
     def prefill(self):
@@ -396,12 +406,12 @@ class PrefillDecodeBackend:
         pass
 
     def decode(self):
-        self.curr_pos = self.generation_start_pos + self.iteration
+        curr_pos = self.generation_start_pos + self.iteration
         self.timer_stop("all_but_decode")
         self.timer_start("decode_preprocessing")
         decode_input, current_pos = prepare_inputs_ttnn(
             self.tt_decode_input,
-            self.curr_pos,
+            curr_pos,
             self.model_args.dim,
             self.model_args.sliding_window,
             self.tt_model.device,
@@ -415,6 +425,8 @@ class PrefillDecodeBackend:
         tt_output_torch = (
             ttnn.to_torch(tt_out).permute(2, 1, 0, 3).squeeze(1)
         )  # [batch, seq, hidden_dim]
+        ttnn.deallocate(decode_input)
+        # decode_input.deallocate()
         self.timer_stop("decode_get_logits")
         self.timer_start("token_selection")
         # TODO argmax on device
@@ -425,7 +437,7 @@ class PrefillDecodeBackend:
         # Typecast from bf16 to uint32 for embedding
         # tt_out_tok = ttnn.clone(tt_out_argmax, ttnn.DRAM_MEMORY_CONFIG, dtype=ttnn.uint32)
         # tt_out_tok = ttnn.experimental.tensor.typecast(tt_out_tok, dtype=ttnn.uint32)
-        tt_out_tok = self.select_tokens(
+        out_tok = self.select_tokens(
             logits=tt_output_torch,
             skip_token=self.tokenizer.eos_id,
         ).reshape([self.batch_size, 1])
@@ -433,12 +445,13 @@ class PrefillDecodeBackend:
         self.timer_start("embeddings_on_device")
         # TODO send tensor to host can be remove when argmax on device is working
         tt_out_tok = ttnn.from_torch(
-            tt_out_tok,
+            out_tok,
             device=self.device,
             dtype=ttnn.uint32,
             layout=ttnn.ROW_MAJOR_LAYOUT,
         )
         self.tt_decode_input = self.tt_embd(tt_out_tok)
+        ttnn.deallocate(tt_out_tok)
         self.timer_stop("embeddings_on_device")
         self.iteration += 1
         self.timer_start("all_but_decode")
