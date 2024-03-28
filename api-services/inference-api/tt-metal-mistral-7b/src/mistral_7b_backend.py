@@ -495,9 +495,13 @@ class PrefillDecodeBackend:
         for idx, user in enumerate(self.users):
             if user is None or not user.generated_tokens:
                 continue
-            full_text = self.tokenizer.decode(user.generated_tokens)
-            out_text = full_text[user.num_generated_chars :]
-            user.num_generated_chars = len(full_text)
+            if user.generated_tokens[-1] == self.tokenizer.eos_id:
+                # must pass end_of_sequence_str to frontend to close response
+                out_text = inference_config.end_of_sequence_str
+            else:
+                full_text = self.tokenizer.decode(user.generated_tokens)
+                out_text = full_text[user.num_generated_chars :]
+                user.num_generated_chars = len(full_text)
             out = (user.user_id, out_text)
             output_q.put(out)
             if self.verbose:
@@ -505,6 +509,10 @@ class PrefillDecodeBackend:
 
     def reset_user_memory(self, idx, user):
         # not needed for this implementation
+        pass
+
+    def log_user_stats(self, idx, user):
+        # TODO: record user stats, e.g. prompt length, num generated tokens, time
         pass
 
     def update_users(self):
@@ -526,6 +534,7 @@ class PrefillDecodeBackend:
                         f"Evicted user_id: {user.user_id} from index {idx} in user list"
                     )
                 self.reset_user_memory(idx, user)
+                self.log_user_stats(idx, user)
                 self.users[idx] = None
 
     def send_status(self, prompt_q, status_q):

@@ -26,6 +26,7 @@ InferenceConfig = namedtuple(
         "backend_debug_mode",
         "frontend_debug_mode",
         "mock_model",
+        "end_of_sequence_str",
         "model_config",
     ],
 )
@@ -66,6 +67,7 @@ inference_config = InferenceConfig(
     backend_debug_mode=BACKEND_DEBUG_MODE,
     frontend_debug_mode=FRONTEND_DEBUG_MODE,
     mock_model=MOCK_MODEL,
+    end_of_sequence_str="<|endoftext|>",
     model_config=ModelConfig(
         model_version="mistralai/Mistral-7B-Instruct-v0.2",
         model_cache_name="mistral-7b-instruct",

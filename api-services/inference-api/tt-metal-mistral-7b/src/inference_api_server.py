@@ -309,7 +309,7 @@ def get_output(session_id):
             continue
 
         out_text = output_queue_map[session_id].get_nowait()
-        if out_text.endswith("<|endoftext|>"):
+        if out_text.endswith(inference_config.end_of_sequence_str):
             done_generation = True
             with context.conversations_lock:
                 del context.user_last_read[session_id]
@@ -376,7 +376,7 @@ def get_chat_output(session_id):
     yield 'event: close\ndata: {"message": "Connection closed"}\n\n'
 
 
-def normalize_token(token) -> [str, str]:
+def normalize_jwt_token(token) -> [str, str]:
     """
     Note that scheme is case insensitive for the authorization header.
     See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Authorization#directives
@@ -393,7 +393,7 @@ def read_authorization(
     authorization = headers.get("authorization")
     if not authorization:
         abort(HTTP_UNAUTHORIZED, description="Must provide Authorization header.")
-    [scheme, parameters] = normalize_token(authorization)
+    [scheme, parameters] = normalize_jwt_token(authorization)
     if scheme != "bearer":
         user_error_msg = f"Authorization scheme was '{scheme}' instead of bearer"
         abort(HTTP_UNAUTHORIZED, description=user_error_msg)
