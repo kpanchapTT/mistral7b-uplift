@@ -458,14 +458,13 @@ class PrefillDecodeBackend:
                 token = self.pt_encoded_input[idx, self.iteration].unsqueeze(0)
                 if user.return_prompt:
                     user.generated_tokens.append(token.item())
+                    user.num_tokens_generated += 1
                 # TODO: better way of counting prefill that handles input mask being non-contiguous
                 if self.iteration == (
                     torch.count_nonzero(self.input_mask[idx]).item() - 1
                 ):
                     user.prefill_complete = True
             elif user.decode_complete:
-                token = torch.tensor([self.tokenizer.eos_id])
-                user.generated_tokens.append(token.item())
                 logger.error(
                     f"user.decode_complete={user.decode_complete}, and is still generating. Should be None"
                 )
@@ -504,6 +503,9 @@ class PrefillDecodeBackend:
                 user.num_generated_chars = len(full_text)
             out = (user.user_id, out_text)
             output_q.put(out)
+            if user.decode_complete and out_text != inference_config.end_of_sequence_str:
+                # send eos str to frontend in all cases
+                output_q.put((user.user_id, inference_config.end_of_sequence_str))
             if self.verbose:
                 logger.debug(f"user_id:{user.user_id}, {out_text}")
 
