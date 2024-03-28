@@ -208,9 +208,6 @@ class PrefillDecodeBackend:
         ttl.device.DeallocateBuffers(self.device)
         ttl.device.Synchronize(self.device)
         ttl.device.CloseDevice(self.device)
-        # ttl.device.CloseDevice(self.device)
-        # ttl.device.DeallocateBuffers(self.device)
-        # ttl.program_cache.disable_and_clear()
 
     def init_tt_metal_device(self):
         import tt_lib as ttl
@@ -287,9 +284,6 @@ class PrefillDecodeBackend:
             rot_mat=self.rot_emb_matrix_list,
             start_pos=self.generation_start_pos,
         )
-        # for mat in compile_rot_emb_matrix_list:
-        #     # mat.deallocate()
-        #     ttnn.deallocate(mat)
         # Load TTNN embedding module
         self.tt_embd = TtMistralEmbedding(
             device=self.device,
@@ -378,10 +372,6 @@ class PrefillDecodeBackend:
             for user_info in self.users
         ]
         self.timer_start("preprocess_inputs")
-        # deallocate all ttnn mats
-        # for mat in self.rot_emb_matrix_list:
-        #     # mat.deallocate()
-        #     ttnn.deallocate(mat)
         (
             self.tt_decode_input,
             self.pt_encoded_input,
@@ -401,8 +391,6 @@ class PrefillDecodeBackend:
 
     def prefill(self):
         # prefill via decode
-        # for user in self.get_users():
-        #     user.prefill_complete = True
         pass
 
     def decode(self):
@@ -425,8 +413,6 @@ class PrefillDecodeBackend:
         tt_output_torch = (
             ttnn.to_torch(tt_out).permute(2, 1, 0, 3).squeeze(1)
         )  # [batch, seq, hidden_dim]
-        ttnn.deallocate(decode_input)
-        # decode_input.deallocate()
         self.timer_stop("decode_get_logits")
         self.timer_start("token_selection")
         # TODO argmax on device
@@ -451,7 +437,6 @@ class PrefillDecodeBackend:
             layout=ttnn.ROW_MAJOR_LAYOUT,
         )
         self.tt_decode_input = self.tt_embd(tt_out_tok)
-        ttnn.deallocate(tt_out_tok)
         self.timer_stop("embeddings_on_device")
         self.iteration += 1
         self.timer_start("all_but_decode")
@@ -516,7 +501,10 @@ class PrefillDecodeBackend:
                 user.num_generated_chars = len(full_text)
             out = (user.user_id, out_text)
             output_q.put(out)
-            if user.decode_complete and out_text != inference_config.end_of_sequence_str:
+            if (
+                user.decode_complete
+                and out_text != inference_config.end_of_sequence_str
+            ):
                 # send eos str to frontend in all cases
                 output_q.put((user.user_id, inference_config.end_of_sequence_str))
             if self.verbose:
