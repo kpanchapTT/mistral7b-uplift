@@ -1,17 +1,13 @@
-import json
 import os
-from multiprocessing import Queue
-import json
-import pytest
-from functools import partial
-import torch
 import time
-from pathlib import Path
-from transformers import AutoTokenizer
 import traceback
+from multiprocessing import Queue
+from functools import partial
+from pathlib import Path
 
 import torch
 import torch.nn.functional as F
+from transformers import AutoTokenizer
 
 if not os.environ.get("MOCK_MODEL"):
     import tt_lib as ttl
