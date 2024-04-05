@@ -287,12 +287,13 @@ class PrefillDecodeBackend:
     def timer_start(self, name):
         self.timestamps_start[name] = time.time()
 
-    def timer_stop(self, name, log=True):
+    def timer_stop(self, name, log=True, printout=False):
         if name in self.timestamps_start.keys():
             self.timestamps_stop[name] = time.time()
             timedelta = self.timestamps_stop[name] - self.timestamps_start[name]
             if log or self.enable_profile_logging:
-                print(f"timedelta: {name}: {timedelta} seconds")
+                if printout:
+                    print(f"timedelta: {name}: {timedelta} seconds")
                 logger.info(f"timedelta: {name}: {timedelta} seconds")
 
     def model_location_generator(self, model_version, model_subdir=""):
@@ -312,9 +313,6 @@ class PrefillDecodeBackend:
 
     def teardown_tt_metal_device(self):
         logger.info("teardown_tt_metal_device ...")
-        # ttl.device.CloseDevice(self.device)
-        # ttl.device.DeallocateBuffers(self.device)
-        # ttl.program_cache.disable_and_clear()
         for device in self.devices:
             device.disable_and_clear_program_cache()
         # from: use_program_cache
@@ -358,19 +356,6 @@ class PrefillDecodeBackend:
         # model_version = model_config_entries["_name_or_path"]
         self.tt_cache_path = self.get_tt_cache_path(self.model_version)
         
-        # from: run_falcon_demo_kv(
-        #     user_input=user_input,
-        #     model_version=model_version,
-        #     model_config_str=model_config_str,
-        #     model_config=model_config,
-        #     batch_size=32,
-        #     num_layers=model_config_entries["num_hidden_layers"],
-        #     max_seq_len=128,  # 1024,
-        #     model_location_generator=model_location_generator,
-        #     tt_cache_path=tt_cache_path,
-        #     devices=devices,
-        #     prefill_on_host=True,
-        # )
         torch.manual_seed(0)
         # TODO: remove as redundant? -> use_program_cache
         # for device in self.devices:
@@ -582,8 +567,8 @@ class PrefillDecodeBackend:
 
                 user_output_ids = self.post_processor(logits=logits, index=self.num_input_tokens - 1)
                 output_ids[user_id] = user_output_ids
-            self.timer_start("prefill")
 
+        self.timer_stop("prefill")
         # TODO: Should the concat be removed since output token for prefill shouldn't be used
         self.generated_ids = torch.concat((self.prefill_ids[..., :self.num_input_tokens], output_ids), dim=1)
         # 
