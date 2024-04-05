@@ -352,7 +352,7 @@ class PrefillDecodeBackend:
     def init_model(self):
         # Set it up for prefill initially and change the model_config to decode
         model_config_str = "BFLOAT8_B-SHARDED"
-        _init_model_config = get_model_config(model_config_str, "prefill", [1, 32], self.num_devices)
+        _init_model_config = get_model_config(model_config_str, "prefill", [1, 32], len(self.devices))
         # model_version = model_config_entries["_name_or_path"]
         self.tt_cache_path = self.get_tt_cache_path(self.model_version)
         
@@ -426,8 +426,7 @@ class PrefillDecodeBackend:
         # Update model_config for decode
         # TODO: when adding support for prefill on device this should change
         # likely cannot be in init
-        self.model_config = get_model_config(model_config_str, "decode", [self.batch_size, 1], 8)
-        # self.model_config = get_model_config(model_config_str, "decode", [self.batch_size, 1], len(self.devices))
+        self.model_config = get_model_config(model_config_str, "decode", [self.batch_size, 1], len(self.devices))
         self.tt_FalconCausalLM.set_model_config(self.model_config)
         self.attention_mask_memconfig = self.model_config["ATTN_MASK_MEMCFG"]
         if self.attention_mask_memconfig.is_sharded():
