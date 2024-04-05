@@ -287,7 +287,7 @@ class PrefillDecodeBackend:
     def timer_start(self, name):
         self.timestamps_start[name] = time.time()
 
-    def timer_stop(self, name, log=False):
+    def timer_stop(self, name, log=True):
         if name in self.timestamps_start.keys():
             self.timestamps_stop[name] = time.time()
             timedelta = self.timestamps_stop[name] - self.timestamps_start[name]
@@ -319,7 +319,7 @@ class PrefillDecodeBackend:
             device.disable_and_clear_program_cache()
         # from: use_program_cache
         # from: all_devices
-        for device in self.devices.values():
+        for device in self.devices:
             tt_lib.device.DumpDeviceProfiler(device, True)
             tt_lib.device.DeallocateBuffers(device)
 
@@ -381,6 +381,7 @@ class PrefillDecodeBackend:
         # State dict is needed for embeddings
         logger.info("Loading weights...")
         profiler.start(f"loading_weights")
+        hugging_face_reference_model = None
         if len(os.listdir(self.tt_cache_path)) < 260:
             logger.info("Weights not found on machine; downloading weights...")
             model_cache = self.model_location_generator(self.model_version)
@@ -409,7 +410,7 @@ class PrefillDecodeBackend:
         base_url = ""
         use_global_cos_sin_cache = True
         self.tt_FalconCausalLM = TtFalconCausalLM(
-            self.device,
+            self.devices,
             state_dict,
             base_url,
             self.num_layers,
@@ -424,13 +425,15 @@ class PrefillDecodeBackend:
         if self.prefill_on_host:
             # TODO: Remove pytorch model once prefill is on device
             logger.info("Loading PyTorch model for prefill")
-            hugging_face_reference_model = FalconForCausalLM.from_pretrained(self.model_version, low_cpu_mem_usage=True)
-            hugging_face_reference_model.eval()
+            if not hugging_face_reference_model:
+                # only reload model if need to
+                hugging_face_reference_model = FalconForCausalLM.from_pretrained(self.model_version, low_cpu_mem_usage=True, cache_dir=tt_cache_path)
+                hugging_face_reference_model.eval()
             self.pytorch_FalconCausalLM = PytorchFalconCausalLM(hugging_face_reference_model, self.num_layers)
         else:
             logger.info("Initializing and KV cache")
             profiler.start(f"initializing_KV_cache")
-            kv_cache = initialize_kv_cache(_init_model_config, self.configuration, self.num_layers, self.batch_size, self.max_seq_len, self.devices)
+            self.kv_cache = initialize_kv_cache(_init_model_config, self.configuration, self.num_layers, self.batch_size, self.max_seq_len, self.devices)
             profiler.end(f"initializing_KV_cache")
 
 
@@ -438,7 +441,8 @@ class PrefillDecodeBackend:
         # Update model_config for decode
         # TODO: when adding support for prefill on device this should change
         # likely cannot be in init
-        self.model_config = get_model_config(model_config_str, "decode", [self.batch_size, 1], len(self.devices))
+        self.model_config = get_model_config(model_config_str, "decode", [self.batch_size, 1], 8)
+        # self.model_config = get_model_config(model_config_str, "decode", [self.batch_size, 1], len(self.devices))
         self.tt_FalconCausalLM.set_model_config(self.model_config)
         self.attention_mask_memconfig = self.model_config["ATTN_MASK_MEMCFG"]
         if self.attention_mask_memconfig.is_sharded():
@@ -519,7 +523,7 @@ class PrefillDecodeBackend:
     def prepare_inputs(self):
         input_prompts = [user_info.prompt for user_info in self.users if user_info]
         self.prefill_ids, self.num_users, self.num_input_tokens = preprocess_and_validate_inputs(
-            input_prompts, self.tokenizer, self.max_seq_len
+            input_prompts, self.tokenizer
         )
 
     def prefill(self):
@@ -528,7 +532,7 @@ class PrefillDecodeBackend:
         if self.prefill_on_host:
             logger.info("Initializing and filling KV cache")
             profiler.start(f"initializing_KV_cache_on_host")
-            pt_logits, kv_cache = initialize_and_fill_kv_cache(
+            pt_logits, self.kv_cache = initialize_and_fill_kv_cache(
                 self.pytorch_FalconCausalLM,
                 self.model_config,
                 self.configuration,
@@ -542,7 +546,7 @@ class PrefillDecodeBackend:
 
             output_ids = torch.zeros(self.num_users, 1, dtype=torch.int64)
             for user_id in range(self.num_users):
-                user_output_ids = self.post_processor(logits=pt_logits[user_id : user_id + 1, :, :], index=num_input_tokens - 1)
+                user_output_ids = self.post_processor(logits=pt_logits[user_id : user_id + 1, :, :], index=self.num_input_tokens - 1)
                 output_ids[user_id] = user_output_ids
 
         if not self.prefill_on_host:
@@ -555,11 +559,11 @@ class PrefillDecodeBackend:
                     tt_prefill_embeddings,
                     tt_prefill_attention_mask,
                 ) = self.tt_FalconCausalLM.model_preprocessing(
-                    "prefill", self.prefill_ids[user_id : user_id + 1], 0, num_input_tokens=num_input_tokens
+                    "prefill", self.prefill_ids[user_id : user_id + 1], 0, num_input_tokens=self.num_input_tokens
                 )
                 assert tt_prefill_attention_mask is not None
 
-                tt_logits, kv_cache = self.tt_FalconCausalLM(
+                tt_logits, self.kv_cache = self.tt_FalconCausalLM(
                     input_embeddings=tt_prefill_embeddings,
                     llm_mode="prefill",
                     attention_mask=tt_prefill_attention_mask,
@@ -568,8 +572,6 @@ class PrefillDecodeBackend:
                     layer_past_len=0,
                     use_cache=self.use_cache,
                 )
-                # time_prefill_compile_end = time.time()
-                # time_prefill_compile += time_prefill_compile_end - time_prefill_compile_start
 
                 # TODO: same as .deallocate()?
                 del tt_prefill_embeddings
@@ -584,7 +586,12 @@ class PrefillDecodeBackend:
 
         # TODO: Should the concat be removed since output token for prefill shouldn't be used
         self.generated_ids = torch.concat((self.prefill_ids[..., :self.num_input_tokens], output_ids), dim=1)
+        # 
+        self.decode_ids = torch.zeros(self.batch_size, 1, dtype=torch.int64)
+        for user_id, output_id in enumerate(output_ids):
+            self.decode_ids[user_id] = output_id
 
+        self.kv_cache_len = self.num_input_tokens
         for device in self.devices:
             tt_lib.device.Synchronize(device)
         logger.info("Done prefill")
@@ -612,11 +619,11 @@ class PrefillDecodeBackend:
         # assert tt_decode_attention_mask is not None
         self.timer_stop("decode_preprocessing")
         self.timer_start("decode")
-        tt_logits, kv_cache = self.tt_FalconCausalLM(
+        tt_logits, self.kv_cache = self.tt_FalconCausalLM(
             input_embeddings=tt_decode_embeddings,
             llm_mode="decode",
             attention_mask=tt_decode_attention_mask,
-            layer_past=kv_cache,
+            layer_past=self.kv_cache,
             layer_past_len=self.kv_cache_len,
             use_cache=self.use_cache,
         )
@@ -628,15 +635,9 @@ class PrefillDecodeBackend:
         # tt_outs = []
         logits = torch.cat([tt2torch_tensor(tt_o).squeeze(1) for tt_o in tt_logits], -1)
         del tt_logits
+        # TODO: for test
+        # logits = tt_logits
         self.timer_stop("decode")
-
-        # decode_ids = self.post_processor(logits=logits, index=...).reshape(self.batch_size, 1)
-
-        # for user_id, user_decode_id in enumerate(decode_ids[:self.num_users]):
-        #     if user_decode_id == END_OF_TEXT:
-        #         self.prompt_is_done[user_id] = True
-        #     if self.prompt_is_done[user_id]:
-        #         decode_ids[user_id] = SPACE
 
         self.timer_start("token_selection")
         self.timer_start("batch_top_pk_logits_efficient")
@@ -757,14 +758,14 @@ class PrefillDecodeBackend:
 
 def batch_top_pk_logits_efficient(
     logits,
-    top_ps=[0.9],
-    top_ks=[10],
-    temperatures=[1.0],
+    top_ps,
+    top_ks,
+    temperatures,
     return_probs=False,
     skip_token=11,
 ):
     out_tokens = []
-    for b_logits, p, k, temperature in zip(logits[0], top_ps, top_ks, temperatures):
+    for b_logits, p, k, temperature in zip(logits, top_ps, top_ks, temperatures):
         if p is None:
             # skip None users
             token = torch.tensor([skip_token])

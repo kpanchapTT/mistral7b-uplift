@@ -5,6 +5,7 @@ import time
 from unittest.mock import Mock, patch, MagicMock
 import sys
 
+import torch
 
 # Note: because falcon_40b_backend.py uses direct imports using `unittest.mock`
 # does not work. The alternative would require rewritting the backend implementation
@@ -44,29 +45,42 @@ from tt_metal_impl.tt.falcon_causallm import TtFalconCausalLM
 def mock_init_tt_metal(self, *args, **kwargs):
     print("using mock_init_tt_metal")
     self.num_devices = 8
-    self.devices = []
+    self.devices = [MagicMock() for i in range(8)]
 
-def mock_forward(self, *args, **kwargs):
+def mock_forward(self, input_embeddings, llm_mode, attention_mask, layer_past, layer_past_len, use_cache):
+    """ mock for:
+    tt_logits, self.kv_cache = self.tt_FalconCausalLM(
+        input_embeddings=tt_decode_embeddings,
+        llm_mode="decode",
+        attention_mask=tt_decode_attention_mask,
+        layer_past=self.kv_cache,
+        layer_past_len=self.kv_cache_len,
+        use_cache=self.use_cache,
+    )
+    tt_logits: shape: [batch_size, vocab_size]
+    """
     # mock with repeating previous token
     tps = 3000  # simulate a given tokens per second per user
     time.sleep(1 / tps)
-    output_tokens = self.input_ids[-1].unsqueeze(0)
-    # if user has hit max_length, send eos token
-    for idx, user in enumerate(self.users):
-        if user is not None:
-            output_tokens[0, idx] = self.tokenizer(
-                str(user.position_id % 10)
-            ).input_ids[0]
-            if (user.position_id - user.prompt_length + 1) >= user.max_tokens:
-                output_tokens[0, idx] = self.tokenizer.eos_token_id
-            elif (
-                (user.stop_sequence is not None)
-                and (user.position_id - user.prompt_length + 1) > 0
-                and (output_tokens[0, idx] == user.stop_sequence)
-            ):
-                output_tokens[0, idx] = self.tokenizer.eos_token_id
-    # update the new tokens generated to the input id
-    self.input_ids = output_tokens.view(1, self.max_users)
+    # output_tokens = self.input_ids[-1].unsqueeze(0)
+    # # if user has hit max_length, send eos token
+    # for idx, user in enumerate(self.users):
+    #     if user is not None:
+    #         output_tokens[0, idx] = self.tokenizer(
+    #             str(user.position_id % 10)
+    #         ).input_ids[0]
+    #         if (user.position_id - user.prompt_length + 1) >= user.max_tokens:
+    #             output_tokens[0, idx] = self.tokenizer.eos_token_id
+    #         elif (
+    #             (user.stop_sequence is not None)
+    #             and (user.position_id - user.prompt_length + 1) > 0
+    #             and (output_tokens[0, idx] == user.stop_sequence)
+    #         ):
+    #             output_tokens[0, idx] = self.tokenizer.eos_token_id
+    # # update the new tokens generated to the input id
+    # self.input_ids = output_tokens.view(1, self.max_users)
+    tt_logits = torch.rand((32, self.config.vocab_size))
+    return tt_logits, layer_past
 
 
 @patch.object(TtFalconCausalLM, "__call__", new=mock_forward)
