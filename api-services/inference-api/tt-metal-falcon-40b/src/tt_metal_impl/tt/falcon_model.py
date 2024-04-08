@@ -41,7 +41,6 @@ class TtFalconModelShared:
         self.config = config
         self.max_position_embeddings = max_position_embeddings
         self.model_config = model_config
-        self.num_layers = num_layers
 
         # So far on CPU until we add embeddings support on device
         self.embeddings = torch.nn.Embedding(config.vocab_size, config.hidden_size)
@@ -68,20 +67,22 @@ class TtFalconModelShared:
             global_cos_sin_cache = None
 
         # stack all decoders
-        self.layers = [
-            TtFalconDecoderLayer(
-                devices=devices,
-                state_dict=state_dict,
-                base_url=f"{base_url}.h",
-                layer_num=layer_num,
-                config=config,
-                max_position_embeddings=max_position_embeddings,
-                model_config=model_config,
-                tt_cache_path=tt_cache_path,
-                global_cos_sin_cache=global_cos_sin_cache,
+        self.layers = []
+        for layer_num in range(num_layers):
+            print(f"setting up layer: {layer_num+1}")
+            self.layers.append(
+                TtFalconDecoderLayer(
+                    devices=devices,
+                    state_dict=state_dict,
+                    base_url=f"{base_url}.h",
+                    layer_num=layer_num,
+                    config=config,
+                    max_position_embeddings=max_position_embeddings,
+                    model_config=model_config,
+                    tt_cache_path=tt_cache_path,
+                    global_cos_sin_cache=global_cos_sin_cache,
+                )
             )
-            for layer_num in range(num_layers)
-        ]
 
         layer_name = f"{base_url}"
 
@@ -130,11 +131,6 @@ class TtFalconModelShared:
             )
 
         self.layernorm_eps = config.layer_norm_epsilon
-
-    def set_model_config(self, model_config):
-        self.model_config = model_config
-        for layer_num in range(self.num_layers):
-            self.layers[layer_num].set_model_config(model_config)
 
     def model_preprocessing(self, llm_mode, input_ids, kv_cache_len, num_input_tokens):
         assert input_ids.dim() == 2

@@ -150,11 +150,6 @@ class TtFalconDecoderLayer:
 
         self.layernorm_eps = config.layer_norm_epsilon
 
-    def set_model_config(self, model_config):
-        self.model_config = model_config
-        self.self_attn.set_model_config(model_config)
-        self.mlp.set_model_config(model_config)
-
     def __call__(
         self,
         hidden_states: tt_lib.tensor.Tensor,
@@ -237,7 +232,7 @@ class TtFalconDecoderLayer:
         # Note that this is only correct in inference when dropout is disabled
         for i in range(len(residual)):
             output.append(
-                tt_lib.operations.primary.add(
+                tt_lib.tensor.add_without_autoformat(
                     residual[i],
                     attention_output[i],
                     output_mem_config=self.model_config["PARALLEL_ATTN_ADD_OUTPUT_MEMCFG"],
@@ -253,7 +248,7 @@ class TtFalconDecoderLayer:
         # dropout_add
         # For inference, this is just add
         for i in range(len(output)):
-            output[i] = tt_lib.operations.primary.add(
+            output[i] = tt_lib.tensor.add_without_autoformat(
                 output[i],
                 mlp_output[i],
                 output_mem_config=self.model_config["DROPOUT_ADD_OUTPUT_MEMCFG"],
