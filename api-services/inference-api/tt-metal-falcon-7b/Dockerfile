@@ -71,9 +71,10 @@ ENV PYTHONPATH=${HOME_DIR}/tt-metal
 
 # clone tt-metal and its submodules
 # remove git data to reduce space post-build
+# 9a46d863ea84412625ebb8757423003e3c360b91 -> main on April 8th, 2024
 RUN git clone https://github.com/tenstorrent-metal/tt-metal.git && \
     cd tt-metal && \
-    git checkout ffbe64d9 && \
+    git checkout 9a46d863ea84412625ebb8757423003e3c360b91 && \
     git submodule update --init --recursive && \
     git submodule foreach 'git lfs fetch --all && git lfs pull' && \
     pip config set global.extra-index-url https://download.pytorch.org/whl/cpu && \

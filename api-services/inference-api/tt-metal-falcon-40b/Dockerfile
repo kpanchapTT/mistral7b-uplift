@@ -73,7 +73,8 @@ ENV PYTHONPATH=${HOME_DIR}/tt-metal
 # remove git data to reduce space post-build
 RUN git clone https://github.com/tenstorrent-metal/tt-metal.git && \
     cd tt-metal && \
-    git checkout v0.46.0-rc8 && \
+    git fetch origin 8a0d348f14080d22e557ac2a664625297d5c2853 && \
+    git checkout 8a0d348f14080d22e557ac2a664625297d5c2853 && \
     git submodule update --init --recursive && \
     git submodule foreach 'git lfs fetch --all && git lfs pull' && \
     pip config set global.extra-index-url https://download.pytorch.org/whl/cpu && \
@@ -82,14 +83,14 @@ RUN git clone https://github.com/tenstorrent-metal/tt-metal.git && \
 
 # install app requirements
 WORKDIR "${HOME_DIR}/${APP_DIR}"
-# COPY --chown=user:user "src" "${HOME_DIR}/${APP_DIR}/src"
-# COPY --chown=user:user "requirements.txt" "${HOME_DIR}/${APP_DIR}/requirements.txt"
-# RUN /bin/bash -c "source ${HOME_DIR}/tt-metal/build/python_env/bin/activate && pip install --default-timeout=240 --no-cache-dir -r requirements.txt" 
+COPY --chown=user:user "src" "${HOME_DIR}/${APP_DIR}/src"
+COPY --chown=user:user "requirements.txt" "${HOME_DIR}/${APP_DIR}/requirements.txt"
+RUN /bin/bash -c "source ${HOME_DIR}/tt-metal/build/python_env/bin/activate && pip install --default-timeout=240 --no-cache-dir -r requirements.txt" 
 
 # run app via gunicorn
-# WORKDIR "${HOME_DIR}/${APP_DIR}/src"
-# CMD ["/bin/bash", "-c", "source /home/user/tt-metal/build/python_env/bin/activate && gunicorn --config gunicorn.conf.py"]
+WORKDIR "${HOME_DIR}/${APP_DIR}/src"
+CMD ["/bin/bash", "-c", "source /home/user/tt-metal/build/python_env/bin/activate && gunicorn --config gunicorn.conf.py"]
 
 # default port is 7000
 ENV SERVICE_PORT=7000
-# HEALTHCHECK --retries=5 --start-period=1s CMD curl -f http://localhost:${SERVICE_PORT}/health || exit 1
+HEALTHCHECK --retries=5 --start-period=1s CMD curl -f http://localhost:${SERVICE_PORT}/health || exit 1

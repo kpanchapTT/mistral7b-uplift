@@ -308,8 +308,7 @@ class PrefillDecodeBackend:
 
     def teardown(self):
         logger.info("teardown ...")
-        if not os.environ.get("MOCK_MODEL"):
-            self.teardown_tt_metal_device()
+        self.teardown_tt_metal_device()
 
     def teardown_tt_metal_device(self):
         logger.info("teardown_tt_metal_device ...")
@@ -352,6 +351,7 @@ class PrefillDecodeBackend:
     def init_model(self):
         # Set it up for prefill initially and change the model_config to decode
         model_config_str = "BFLOAT8_B-SHARDED"
+        logger.info(f"len(self.devices)={len(self.devices)}")
         _init_model_config = get_model_config(model_config_str, "prefill", [1, 32], len(self.devices))
         # model_version = model_config_entries["_name_or_path"]
         self.tt_cache_path = self.get_tt_cache_path(self.model_version)
