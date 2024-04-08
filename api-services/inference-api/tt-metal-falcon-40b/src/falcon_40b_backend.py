@@ -412,7 +412,8 @@ class PrefillDecodeBackend:
             logger.info("Loading PyTorch model for prefill")
             if not hugging_face_reference_model:
                 # only reload model if need to
-                hugging_face_reference_model = FalconForCausalLM.from_pretrained(self.model_version, low_cpu_mem_usage=True, cache_dir=tt_cache_path)
+                model_cache = self.model_location_generator(self.model_version)
+                hugging_face_reference_model = FalconForCausalLM.from_pretrained(self.model_version, low_cpu_mem_usage=True, cache_dir=model_cache)
                 hugging_face_reference_model.eval()
             self.pytorch_FalconCausalLM = PytorchFalconCausalLM(hugging_face_reference_model, self.num_layers)
         else:
@@ -622,7 +623,6 @@ class PrefillDecodeBackend:
         # TODO: for test
         # logits = tt_logits
         self.timer_stop("decode")
-
         self.timer_start("token_selection")
         self.timer_start("batch_top_pk_logits_efficient")
         self.decode_ids = batch_top_pk_logits_efficient(
@@ -749,7 +749,7 @@ def batch_top_pk_logits_efficient(
     skip_token=11,
 ):
     out_tokens = []
-    for b_logits, p, k, temperature in zip(logits, top_ps, top_ks, temperatures):
+    for b_logits, p, k, temperature in zip(logits[0], top_ps, top_ks, temperatures):
         if p is None:
             # skip None users
             token = torch.tensor([skip_token])

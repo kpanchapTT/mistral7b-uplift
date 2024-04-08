@@ -79,7 +79,7 @@ def mock_forward(self, input_embeddings, llm_mode, attention_mask, layer_past, l
     #             output_tokens[0, idx] = self.tokenizer.eos_token_id
     # # update the new tokens generated to the input id
     # self.input_ids = output_tokens.view(1, self.max_users)
-    tt_logits = torch.rand((32, self.config.vocab_size))
+    tt_logits = torch.rand((1, 32, self.config.vocab_size))
     return tt_logits, layer_past
 
 
