@@ -428,7 +428,8 @@ class PrefillDecodeBackend:
         # TODO: when adding support for prefill on device this should change
         # likely cannot be in init
         self.model_config = get_model_config(model_config_str, "decode", [self.batch_size, 1], len(self.devices))
-        self.tt_FalconCausalLM.set_model_config(self.model_config)
+        # self.tt_FalconCausalLM.set_model_config(self.model_config)
+        self.tt_FalconCausalLM.model_config = self.model_config
         self.attention_mask_memconfig = self.model_config["ATTN_MASK_MEMCFG"]
         if self.attention_mask_memconfig.is_sharded():
             attn_mask_shard_shape = self.attention_mask_memconfig.shard_spec.shape

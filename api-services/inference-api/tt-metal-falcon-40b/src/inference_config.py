@@ -26,6 +26,7 @@ InferenceConfig = namedtuple(
         "backend_debug_mode",
         "frontend_debug_mode",
         "mock_model",
+        "end_of_sequence_str",
         "falcon_config",
     ],
 )
@@ -65,6 +66,7 @@ inference_config = InferenceConfig(
     backend_debug_mode=BACKEND_DEBUG_MODE,
     frontend_debug_mode=FRONTEND_DEBUG_MODE,
     mock_model=MOCK_MODEL,
+    end_of_sequence_str="<|endoftext|>",
     falcon_config=FalconConfig(
         model_version="tiiuae/falcon-40b-instruct",
         batch_size=32,
