@@ -228,19 +228,13 @@ class PrefillDecodeBackend:
         for device in self.devices:
             ttl.device.DumpDeviceProfiler(device, True)
             ttl.device.DeallocateBuffers(device)
-        ttl.device.CloseDevices(self.devices)
+        ttl.device.CloseDevices(self.devices_dict)
 
     def init_tt_metal_device(self):
         logger.info("init_tt_metal_device ...")
-        # TODO: can this be determined?
-        # if not, use environment var
-        # device_id = int(os.getenv("DEVICE_ID", 0))
-        # logger.info(f"using DEVICE_ID={device_id}")
-        # device = ttl.device.CreateDevice(device_id)
-        # ttl.device.SetDefaultDevice(device)
-        # self.device = ttl.device.GetDefaultDevice()
         num_devices = ttl.device.GetNumAvailableDevices()
         devices = ttl.device.CreateDevices([i for i in range(num_devices)])
+        self.devices_dict = devices
         all_devices = [devices[i] for i in range(num_devices)]
         assert len(all_devices) == 1, "Model implementation for 1 WH device only."
         self.device = all_devices[0]
