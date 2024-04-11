@@ -48,8 +48,8 @@ RUN apt update && apt install -y \
     && rm -rf /var/lib/apt/lists/*
 
 ## add user
-ARG APP_DIR=/tt-metal-falcon-7b
 ARG HOME_DIR=/home/user
+ARG APP_DIR=tt-metal-falcon-40b
 
 RUN useradd -u 1000 -s /bin/bash -d ${HOME_DIR} user && \
     mkdir -p ${HOME_DIR} && \
@@ -71,10 +71,10 @@ ENV PYTHONPATH=${HOME_DIR}/tt-metal
 
 # clone tt-metal and its submodules
 # remove git data to reduce space post-build
-# 9a46d863ea84412625ebb8757423003e3c360b91 -> main on April 8th, 2024
 RUN git clone https://github.com/tenstorrent-metal/tt-metal.git && \
     cd tt-metal && \
-    git checkout 9a46d863ea84412625ebb8757423003e3c360b91 && \
+    git fetch origin 8a0d348f14080d22e557ac2a664625297d5c2853 && \
+    git checkout 8a0d348f14080d22e557ac2a664625297d5c2853 && \
     git submodule update --init --recursive && \
     git submodule foreach 'git lfs fetch --all && git lfs pull' && \
     pip config set global.extra-index-url https://download.pytorch.org/whl/cpu && \
