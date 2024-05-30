@@ -223,27 +223,32 @@ class PrefillDecodeBackend:
 
     def teardown_tt_metal_device(self):
         logger.info("teardown_tt_metal_device ...")
-        ttl.device.CloseDevice(self.device)
-        ttl.device.DeallocateBuffers(self.device)
-        ttl.program_cache.disable_and_clear()
+        for device in self.devices:
+            device.disable_and_clear_program_cache()
+        for device in self.devices:
+            ttl.device.DumpDeviceProfiler(device, True)
+            ttl.device.DeallocateBuffers(device)
+        ttl.device.CloseDevices(self.devices_dict)
 
     def init_tt_metal_device(self):
         logger.info("init_tt_metal_device ...")
-        # TODO: can this be determined?
-        # if not, use environment var
-        device_id = int(os.getenv("DEVICE_ID", 0))
-        logger.info(f"using DEVICE_ID={device_id}")
-        device = ttl.device.CreateDevice(device_id)
-        ttl.device.SetDefaultDevice(device)
-        self.device = ttl.device.GetDefaultDevice()
+        num_devices = ttl.device.GetNumAvailableDevices()
+        devices = ttl.device.CreateDevices([i for i in range(num_devices)])
+        self.devices_dict = devices
+        all_devices = [devices[i] for i in range(num_devices)]
+        assert len(all_devices) == 1, "Model implementation for 1 WH device only."
+        self.device = all_devices[0]
+        # for compatability
+        self.devices = [self.device]
+        for dev in self.devices:
+            dev.enable_program_cache()
+        disable_persistent_kernel_cache()
+        disable_compilation_reports()
+    
 
     def init_tt_metal(self):
         logger.info("init_tt_metal ...")
         self.init_tt_metal_device()
-        ttl.program_cache.disable_and_clear()
-        ttl.program_cache.enable()
-        disable_persistent_kernel_cache()
-        disable_compilation_reports()
 
         torch.manual_seed(0)
 

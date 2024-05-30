@@ -4,3 +4,4 @@
 !Dockerfile
 !src
 !requirements.txt
+!config.yaml
