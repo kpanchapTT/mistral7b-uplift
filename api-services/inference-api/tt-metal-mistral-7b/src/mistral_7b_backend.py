@@ -32,18 +32,13 @@ logger = get_logger(__name__)
 logger.info(f"importing {__name__}")
 
 
-def preprocess_inputs(
-    input_prompts, tokenizer, model_args, dtype, embd, instruct, device
-):
+def preprocess_inputs(input_prompts, tokenizer, model_args, dtype, embd, instruct, device):
     """
     Run tokenizer on inputs, and create embeddings for the first token of each input
     """
     if instruct:
         # Pre append [INST] and post append [/INST] to the encoded prompts if instruct mode
-        encoded_prompts = [
-            tokenizer.encode("[INST] " + prompt + " [/INST]")
-            for prompt in input_prompts
-        ]
+        encoded_prompts = [tokenizer.encode("[INST] " + prompt + " [/INST]") for prompt in input_prompts]
     else:
         encoded_prompts = [tokenizer.encode(prompt) for prompt in input_prompts]
 
@@ -51,9 +46,7 @@ def preprocess_inputs(
 
     # Pad the inputs to the max length prompt
     max_prompt_len = max(prompt_lens)
-    input_tokens = torch.full(
-        (len(input_prompts), max_prompt_len), tokenizer.pad_id, dtype=torch.long
-    )
+    input_tokens = torch.full((len(input_prompts), max_prompt_len), tokenizer.pad_id, dtype=torch.long)
 
     for i, encoded in enumerate(encoded_prompts):
         input_tokens[i, : len(encoded)] = torch.tensor(encoded).to(input_tokens)
@@ -65,9 +58,7 @@ def preprocess_inputs(
     seqlen = 1  # Generating one token per user at a time
     # Select the first token from the prompts for initial decoding
     pt_tokenized_inputs = torch.tensor(input_tokens)
-    emb_inputs = embd(pt_tokenized_inputs[:, 0]).view(
-        model_args.max_batch_size, seqlen, -1
-    )
+    emb_inputs = embd(pt_tokenized_inputs[:, 0]).view(model_args.max_batch_size, seqlen, -1)
 
     # Return the rotational embedding matrix on device
     cos, sin = precompute_freqs(model_args.head_dim, model_args.max_seq_len * 2)
@@ -77,10 +68,7 @@ def preprocess_inputs(
     for i in range(rot_emb_matrix.shape[0]):
         rot_emb_matrix_list.append(
             ttnn.from_torch(
-                rot_emb_matrix[i, :, :].unsqueeze(0).unsqueeze(0),
-                device=device,
-                dtype=dtype,
-                layout=ttnn.TILE_LAYOUT,
+                rot_emb_matrix[i, :, :].unsqueeze(0).unsqueeze(0), device=device, dtype=dtype, layout=ttnn.TILE_LAYOUT
             )
         )  # ttnn.bfloat16
 
