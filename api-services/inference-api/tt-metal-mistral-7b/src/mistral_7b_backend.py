@@ -18,6 +18,7 @@ if not os.environ.get("MOCK_MODEL"):
         sample,
         precompute_freqs,
         freqs_to_rotation_matrix,
+        cache_attention,
     )
     from tt_metal_impl.tt.mistral_model import TtTransformer
     from tt_metal_impl.tt.mistral_embedding import TtMistralEmbedding
@@ -255,6 +256,9 @@ class PrefillDecodeBackend:
             self.device,
         )
 
+        logger.info("Caching attention ops...")
+        cache_attention(device, state_dict, model_args, rot_emb_matrix_list, dtype)
+
         if self.instruct_mode:
             self.tokenizer._model.pad_id = self.tokenizer._model.eos_id
 
@@ -397,11 +401,13 @@ class PrefillDecodeBackend:
         # Run ttnn mistral model
         tt_out = self.tt_model(decode_input, current_pos)
         self.timer_stop("decode")
+
         self.timer_start("decode_get_logits")
         tt_output_torch = (
             ttnn.to_torch(tt_out).permute(2, 1, 0, 3).squeeze(1)
         )  # [batch, seq, hidden_dim]
         self.timer_stop("decode_get_logits")
+
         self.timer_start("token_selection")
         # TODO argmax on device
         # tt_out = ttnn.to_layout(tt_out, ttnn.ROW_MAJOR_LAYOUT)
@@ -416,6 +422,7 @@ class PrefillDecodeBackend:
             skip_token=self.tokenizer.eos_id,
         ).reshape([self.batch_size, 1])
         self.timer_stop("token_selection")
+        
         self.timer_start("embeddings_on_device")
         # TODO send tensor to host can be remove when argmax on device is working
         tt_out_tok = ttnn.from_torch(
