@@ -23,7 +23,7 @@ class TtModelArgs:
     # Parameters for our use
     max_batch_size = 32
     max_seq_len = 4096
-    kv_seq_len = 512  # TODO Update the initial cache size when scaling up (Should be window_size == 4096)
+    kv_seq_len = 1024  # TODO Update the initial cache size when scaling up (Should be window_size == 4096)
 
     OP_KEYS = (
         # Embedding
@@ -45,16 +45,19 @@ class TtModelArgs:
         "CONCAT_HEADS_OUTPUT",
         "LM_HEAD_OUTPUT",
         "ATTN_W_LAYOUT",
+        # Decoder
+        "DEC_SKIP_OUTPUT",
     )
 
-    def __init__(self, device, model_base_path, instruct=False):
-        # note: instruct and base models are separated by model_base_path
-        # if cache is not set up download from: https://models.mistralcdn.com/mistral-7b-v0-2/Mistral-7B-v0.2-Instruct.tar 
-        # to get the weights in the `consolidated.00.pth` format
+    def __init__(self, device, model_base_path="/proj_sw/user_dev/hf_data/mistral/mistral-7B-v0.1/", instruct=False):
         self.model_base_path = Path(model_base_path)
         # Some consumers like SentencePiece only accept str not Path for files
-        self.consolidated_weights_path = str(self.model_base_path / "consolidated.00.pth")
-        self.tokenizer_path = str(self.model_base_path / "tokenizer.model")
+        if instruct:  # Load instruct weights and tokenizer (Mistral-7B-Instruct-v0.2)
+            self.consolidated_weights_path = str(self.model_base_path / "consolidated_instruct.00.pth")
+            self.tokenizer_path = str(self.model_base_path / "tokenizer_instruct.model")
+        else:  # Load generative weights and tokenizer (Mistral-7B-v0.1)
+            self.consolidated_weights_path = str(self.model_base_path / "consolidated.00.pth")
+            self.tokenizer_path = str(self.model_base_path / "tokenizer.model")
 
         DRAM_MEMCFG = ttnn.DRAM_MEMORY_CONFIG
         L1_MEMCFG = ttnn.L1_MEMORY_CONFIG
@@ -78,20 +81,40 @@ class TtModelArgs:
             ), f"Number of rows in the grid should be a factor of max_batch_size ({self.max_batch_size})"
             self.max_grid_size = ttnn.CoreGrid(y=grid_size_y, x=grid_size.x)  # (y,x)
 
-        # Add sharded memory config for MLP FF1/FF3
-        mlp_shard_config = ttnn.create_sharded_memory_config(
-            [self.max_batch_size, self.hidden_dim], self.max_grid_size, ttnn.ShardStrategy.WIDTH
-        )
-        self.model_config["FF1_OUTPUT_MEMCFG"] = mlp_shard_config
-        self.model_config["FF3_OUTPUT_MEMCFG"] = mlp_shard_config
+            # Add sharded memory config for MLP FF1/FF3
+            mlp_shard_config = ttnn.create_sharded_memory_config(
+                [self.max_batch_size, self.hidden_dim], self.max_grid_size, ttnn.ShardStrategy.WIDTH
+            )
+            self.model_config["FF1_OUTPUT_MEMCFG"] = mlp_shard_config
+            self.model_config["FF3_OUTPUT_MEMCFG"] = mlp_shard_config
 
-        # Compute kernel shared by attention and MLP. FP32 acc is needed for accuracy
-        self.compute_kernel_config = ttnn.WormholeComputeKernelConfig(
-            math_fidelity=ttnn.MathFidelity.HiFi4,
-            math_approx_mode=False,
-            fp32_dest_acc_en=True,
-            packer_l1_acc=True,
-        )
+            shard_height = 32
+            hidden_size = 4096
+            shard_width_hidden_dim_across_32_cores = hidden_size // 32
+            self.model_config["SHARDED_NORM_INPUT_MEMCFG"] = ttnn.create_sharded_memory_config(
+                shape=(shard_height, shard_width_hidden_dim_across_32_cores),
+                core_grid=ttnn.CoreGrid(y=4, x=8),
+                strategy=ttnn.ShardStrategy.WIDTH,
+                orientation=ttnn.ShardOrientation.ROW_MAJOR,
+                use_height_and_width_as_shard_shape=True,
+            )
+            self.model_config["SHARDED_NORM_OUTPUT_MEMCFG"] = self.model_config["SHARDED_NORM_INPUT_MEMCFG"]
+            self.model_config[
+                "SHARDED_NORM_PRGM_CFG"
+            ] = ttnn.experimental.operations.primary.LayerNormShardedMultiCoreProgramConfig(
+                compute_with_storage_grid_size=[8, 4],
+                subblock_w=4,
+                block_h=shard_height // 32,
+                block_w=shard_width_hidden_dim_across_32_cores // 32,
+                inplace=False,
+            )
+            # Compute kernel shared by attention and MLP. FP32 acc is needed for accuracy
+            self.compute_kernel_config = ttnn.WormholeComputeKernelConfig(
+                math_fidelity=ttnn.MathFidelity.HiFi4,
+                math_approx_mode=False,
+                fp32_dest_acc_en=True,
+                packer_l1_acc=True,
+            )
 
     def weight_cache_path(self, dtype, instruct=False):
         # Keep the weight cache separate for generative and instruct weights

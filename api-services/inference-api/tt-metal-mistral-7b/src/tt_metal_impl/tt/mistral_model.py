@@ -5,8 +5,8 @@
 import ttnn
 import torch
 import torch.nn as nn
-from models.demos.mistral7b.tt.mistral_decoder import TtTransformerBlock
-from models.demos.mistral7b.tt.mistral_rms_norm import TtRMSNorm
+from models.demos.wormhole.mistral7b.tt.mistral_decoder import TtTransformerBlock
+from models.demos.wormhole.mistral7b.tt.mistral_rms_norm import TtRMSNorm
 import ttnn
 from typing import Optional
 
@@ -53,6 +53,7 @@ class TtTransformer(nn.Module):
             dtype=dtype,
             layer_num=None,
             weight_key="norm",
+            model_config=self.args.get_model_config(),
         )
         self.state_dict = state_dict
 
@@ -75,5 +76,10 @@ class TtTransformer(nn.Module):
             x = layer(x, current_pos, attn_masks)
 
         x = self.norm(x)
-        output = ttnn.linear(x, self.output_weight, core_grid=self.args.max_grid_size)
+        output = ttnn.linear(
+            x,
+            self.output_weight,
+            compute_kernel_config=self.args.get_compute_kernel_config(),
+            core_grid=self.args.max_grid_size,
+        )
         return output
