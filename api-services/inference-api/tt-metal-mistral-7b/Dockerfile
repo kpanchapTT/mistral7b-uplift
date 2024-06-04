@@ -40,6 +40,7 @@ RUN apt update && apt install -y \
     tmux \
     vim \
     unzip \
+    graphviz \
     zip \
     curl \
     iputils-ping \
@@ -73,9 +74,10 @@ ENV SERVICE_PORT=7000
 
 # clone tt-metal and its submodules
 # remove git data to reduce space post-build
+# May 24th, 2024, main -> 35236b6532f85b1b078b32318d0bf3686298cbae
 RUN git clone https://github.com/tenstorrent-metal/tt-metal.git && \
     cd tt-metal && \
-    git checkout de52ade809dc00d13c8bcd1ed9df5d0da43d5063 && \
+    git checkout 35236b6532f85b1b078b32318d0bf3686298cbae && \
     git submodule update --init --recursive && \
     git submodule foreach 'git lfs fetch --all && git lfs pull' && \
     pip config set global.extra-index-url https://download.pytorch.org/whl/cpu && \
