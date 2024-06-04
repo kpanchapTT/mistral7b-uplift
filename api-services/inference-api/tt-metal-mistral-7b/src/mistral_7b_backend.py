@@ -547,7 +547,7 @@ class PrefillDecodeBackend:
             # udpate cur time
             self.time_last_status = time.time()
 
-    def run_generate(self, prompt_q, output_q, status_q):
+    def run_generate(self, prompt_q, output_q, status_q, loop_forever=True):
         """
         Continuously pop prompt from prompt_q and push generated tokens to output_q
         while running decode. Automatically swap users from prompt_q
@@ -555,7 +555,7 @@ class PrefillDecodeBackend:
         output_q: {'user_id1': 'generated_1', 'user_id3': 'generated_1', 'user_id1': 'generated_2'...}
         """
         logger.info("starting run_generate ...")
-        while True:
+        while loop_forever:
             if self.verbose:
                 logger.debug(f"run_generate step: {self.num_steps}")
             self.pick_prompts(prompt_q)  # we update to self.users
@@ -592,7 +592,7 @@ def top_pk_logits_efficient(
     return token
 
 
-def run_backend(prompt_q, output_q, status_q, verbose=True):
+def run_backend(prompt_q, output_q, status_q, verbose=True, loop_forever=True):
     logger.info("starting run_backend ...")
     with torch.no_grad():
         backend = PrefillDecodeBackend(
@@ -605,7 +605,7 @@ def run_backend(prompt_q, output_q, status_q, verbose=True):
         )
         try:
             # run generate
-            backend.run_generate(prompt_q, output_q, status_q)
+            backend.run_generate(prompt_q, output_q, status_q, loop_forever)
         except Exception as e:
             logger.error(e)
             # Capture the stack trace

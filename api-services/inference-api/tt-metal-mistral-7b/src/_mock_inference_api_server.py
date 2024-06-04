@@ -2,10 +2,9 @@ import os
 from time import sleep
 from unittest.mock import Mock, patch
 
-from decode_backend_v1 import DecodeBackend
+from mistral_7b_backend import PrefillDecodeBackend
 from inference_api_server import (
     app,
-    get_backend_override_args,
     initialize_decode_backend,
 )
 from inference_config import inference_config
@@ -65,15 +64,16 @@ def global_backend_init():
         # Create server log directory
         if not os.path.exists(api_log_dir):
             os.makedirs(api_log_dir)
-        override_args = get_backend_override_args()
-        initialize_decode_backend(override_args)
+        # override_args = get_backend_override_args()
+        # initialize_decode_backend(override_args)
+        initialize_decode_backend()
         backend_initialized = True
 
 
-@patch.object(DecodeBackend, "decode", new=mock_decoder)
-@patch.object(DecodeBackend, "_post_init_pybudify", new=mock_post_init_pybudify)
+@patch.object(PrefillDecodeBackend, "decode", new=mock_decoder)
+# @patch.object(PrefillDecodeBackend, "_post_init_pybudify", new=mock_post_init_pybudify)
 @patch.object(
-    DecodeBackend, "load_model_and_tokenizer", new=mock_load_model_and_tokenizer
+    PrefillDecodeBackend, "load_model_and_tokenizer", new=mock_load_model_and_tokenizer
 )
 def create_test_server():
     from flask_cors import CORS

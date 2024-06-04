@@ -439,7 +439,7 @@ def chat_inference():
     return Response(get_output(session_id), content_type="text/event-stream")
 
 
-@app.route("/inference/mistral7b", methods=["POST"])
+@app.route(inference_config.inference_route, methods=["POST"])
 def inference():
     _ = read_authorization(request.headers)
     # user will get 400 on invalid input, with helpful status message

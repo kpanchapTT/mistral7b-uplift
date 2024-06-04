@@ -6,7 +6,7 @@ from inference_config import inference_config
 
 DEPLOY_URL = "http://127.0.0.1"
 API_BASE_URL = f"{DEPLOY_URL}:{inference_config.backend_server_port}"
-API_URL = f"{API_BASE_URL}/inference/falcon7b"
+API_URL = f"{API_BASE_URL}{inference_config.inference_route}"
 # API_URL="https://falcon-api--tenstorrent-playground.workload.tenstorrent.com/inference/falcon40b"
 HEALTH_URL = f"{API_BASE_URL}/health"
 
@@ -113,7 +113,7 @@ def test_api_call_threaded():
     threads = []
 
     for i in range(128):
-        thread = threading.Thread(target=test_api_call, args=[str(i), False])
+        thread = threading.Thread(target=test_valid_api_call, args=[str(i), False])
         threads.append(thread)
         thread.start()
 
