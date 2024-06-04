@@ -20,6 +20,7 @@ RUN apt update && apt install -y \
     libboost-all-dev=1.71.0.0ubuntu2 \
     libsndfile1=1.0.28-7ubuntu0.2 \
     libhwloc-dev \
+    graphviz \
     # build deps
     tzdata \
     clang-6.0=1:6.0.1-14 \
@@ -40,7 +41,6 @@ RUN apt update && apt install -y \
     tmux \
     vim \
     unzip \
-    graphviz \
     zip \
     curl \
     iputils-ping \
@@ -74,26 +74,36 @@ ENV SERVICE_PORT=7000
 
 # clone tt-metal and its submodules
 # remove git data to reduce space post-build
-# May 24th, 2024, main -> 35236b6532f85b1b078b32318d0bf3686298cbae
+# May 24th, 2024, rc: main -> 35236b6532f85b1b078b32318d0bf3686298cbae
 RUN git clone https://github.com/tenstorrent-metal/tt-metal.git && \
     cd tt-metal && \
-    git checkout 35236b6532f85b1b078b32318d0bf3686298cbae && \
+    git checkout 35236b6532f85b1b078b32318d0bf3686298cbae && \ 
     git submodule update --init --recursive && \
     git submodule foreach 'git lfs fetch --all && git lfs pull' && \
     pip config set global.extra-index-url https://download.pytorch.org/whl/cpu && \
     make build && \
     rm -rf .git
 
+RUN git clone https://github.com/tenstorrent/tt-smi.git && \
+    cd tt-smi && \ 
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+    python3 -m venv .venv && \
+    . .venv/bin/activate && \ 
+    pip3 install --upgrade pip && \
+    . "$HOME/.cargo/env" && \
+    pip3 install .
+
+
 # install app requirements
-# WORKDIR "${HOME_DIR}/${APP_DIR}"
-# COPY --chown=user:user "src" "${HOME_DIR}/${APP_DIR}/src"
-# COPY --chown=user:user "requirements.txt" "${HOME_DIR}/${APP_DIR}/requirements.txt"
-# RUN /bin/bash -c "source ${HOME_DIR}/tt-metal/build/python_env/bin/activate && pip install --default-timeout=240 --no-cache-dir -r requirements.txt" 
+WORKDIR "${HOME_DIR}/${APP_DIR}"
+COPY --chown=user:user "src" "${HOME_DIR}/${APP_DIR}/src"
+COPY --chown=user:user "requirements.txt" "${HOME_DIR}/${APP_DIR}/requirements.txt"
+RUN /bin/bash -c "source ${HOME_DIR}/tt-metal/build/python_env/bin/activate && pip install --default-timeout=240 --no-cache-dir -r requirements.txt" 
 
 # run app via gunicorn
 WORKDIR "${HOME_DIR}/${APP_DIR}/src"
-CMD sleep infinity
-# CMD ["/bin/bash", "-c", "source /home/user/tt-metal/build/python_env/bin/activate && gunicorn --config gunicorn.conf.py"]
+# CMD sleep infinity
+CMD ["/bin/bash", "-c", "source /home/user/tt-metal/build/python_env/bin/activate && gunicorn --config gunicorn.conf.py"]
 
 
 # HEALTHCHECK --retries=5 --start-period=1s CMD curl -f http://localhost:${SERVICE_PORT}/health || exit 1
